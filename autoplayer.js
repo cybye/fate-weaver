@@ -77,7 +77,33 @@ export async function runAutoPlayer(state, isLLMActive) {
     return result;
 }
 
-// --- LLM BRANCH ---
+function getEffectiveTargetRoom(state) {
+    const activeMilestone = STORY_DAG.nodes[state.activeMilestoneId];
+    if (!activeMilestone) return null;
+
+    let targetRoom = activeMilestone.pressureConfig?.targetRoom;
+    
+    // Determine the required item for this milestone
+    let requiredItem = null;
+    if (state.activeMilestoneId === "get_scroll" || state.activeMilestoneId === "brew_potion") {
+        requiredItem = "Secret Scroll";
+    } else if (state.activeMilestoneId === "warn_king") {
+        requiredItem = "Deciphered Message";
+    }
+
+    // If the player is missing the required item, find who has it!
+    if (requiredItem && (!state.playerInventory || !state.playerInventory.includes(requiredItem))) {
+        for (const actorId in state.actors) {
+            const actor = state.actors[actorId];
+            if (actor.inventory && actor.inventory.includes(requiredItem)) {
+                console.log(`[AutoPlayer] Missing required item "${requiredItem}". Located holder: ${actor.name} at ${actor.location}.`);
+                return actor.location; // Head toward the actor holding our item!
+            }
+        }
+    }
+
+    return targetRoom;
+}
 
 async function runAutoPlayerLLM(state) {
     const activeMilestone = STORY_DAG.nodes[state.activeMilestoneId];
@@ -91,7 +117,7 @@ async function runAutoPlayerLLM(state) {
         'a cautious traveler trying to do what is right';
 
     // Compute pathfinding hint so the LLM knows which direction is "toward the goal"
-    const targetRoom = activeMilestone?.pressureConfig?.targetRoom;
+    const targetRoom = getEffectiveTargetRoom(state);
     let nextStepHint = 'No specific destination required — explore freely.';
     if (targetRoom && state.playerLocation !== targetRoom) {
         const path = findPath(state.playerLocation, targetRoom, state.blockedConnections);
@@ -167,8 +193,8 @@ function runMoveOrWait(state) {
         return { tool_name: 'wait', arguments: {} };
     }
 
-    // Travel toward the milestone's target room
-    const targetRoom = activeMilestone?.pressureConfig?.targetRoom;
+    // Travel toward the milestone's target room (or the item holder's room if stolen)
+    const targetRoom = getEffectiveTargetRoom(state);
     if (targetRoom && state.playerLocation !== targetRoom) {
         const path = findPath(state.playerLocation, targetRoom, state.blockedConnections);
         if (path && path.length > 1) {
