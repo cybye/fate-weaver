@@ -195,6 +195,14 @@ function runMoveOrWait(state) {
         if (path && path.length > 1) {
             return { tool_name: 'travel', arguments: { destination: path[1] } };
         }
+    } else if (targetRoom && state.playerLocation === targetRoom) {
+        // If we are at the target room, instead of waiting, try interacting with a present NPC to trigger the objective
+        const keyActors = activeMilestone?.pressureConfig?.keyActors || [];
+        const presentNPCs = Object.values(state.actors).filter(a => a.location === state.playerLocation);
+        if (presentNPCs.length > 0) {
+            const targetNPC = presentNPCs.find(a => keyActors.includes(a.id)) || presentNPCs[0];
+            return { tool_name: 'converse', arguments: { character_id: targetNPC.id } };
+        }
     }
 
     // Default: wait
