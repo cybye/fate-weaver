@@ -5,6 +5,7 @@ import { callOllama, testOllamaConnection } from './ollama.js';
 import { updateActor, broadcastEvent, getFormattedMemories } from './actors.js';
 import { runDirector } from './director.js';
 import { runWriter, typewriteText, toggleNarrator, isNarratorActive, speakText } from './writer.js';
+import { runAutoPlayer, checkDecisionPoints } from './autoplayer.js';
 
 // --- WRITER LOG QUEUE ---
 let currentTurnLogs = [];
@@ -48,7 +49,13 @@ function createInitialState() {
         playerInventory: [],
         bobToldStory: false,
         isWriting: false,
-        chronicleHistory: []
+        chronicleHistory: [],
+        // --- AutoPlay ---
+        autoPlayEnabled: false,
+        autoPlayIntervalMs: 4000,
+        pendingDecision: null,
+        decisionsLog: {},
+        _autoPlayerConversedThisPause: false
     };
 }
 
@@ -317,9 +324,50 @@ async function finalizeAction() {
 }
 
 // --- GAME TICK ENGINE ---
-async function tickGame(playerAction) {
+async function tickGame(playerInput) {
     if (state.storyState !== "pending" || state.isWriting) return;
 
+    // --- AutoPlay: detect whether this is a human turn or an auto-tick ---
+    const isAutoTick = (playerInput === null);
+
+    // Smart-pause: converse/examine from a human always hard-pauses AutoPlay
+    if (!isAutoTick && state.autoPlayEnabled) {
+        const isEngagingAction = /^(converse|examine|talk|speak|say|ask|tell|hi|hello)/i.test(playerInput || '');
+        if (isEngagingAction) {
+            state.autoPlayEnabled = false;
+            updateAutoPlayButton();
+            logGame('system', '<i>[AutoPlay paused — you took control of the conversation.]</i>');
+        }
+        // travel/look = soft override — AutoPlay continues after this turn
+    }
+
+    // If auto-tick, generate player action from AutoPlayer
+    let resolvedInput = playerInput;
+    if (isAutoTick) {
+        const toolCall = await runAutoPlayer(state, state.isLLMActive);
+        // Synthesise a text representation so the rest of the pipeline works unchanged
+        if (toolCall.tool_name === 'travel') {
+            resolvedInput = `go_${toolCall.arguments.destination}`;
+        } else if (toolCall.tool_name === 'converse') {
+            resolvedInput = `talk to ${state.actors[toolCall.arguments.character_id]?.name || toolCall.arguments.character_id}`;
+        } else if (toolCall.tool_name === 'examine') {
+            resolvedInput = `examine ${toolCall.arguments.target || 'surroundings'}`;
+        } else {
+            resolvedInput = 'wait';
+        }
+        logGame('system', `<i>[AutoPlay ▶ ${resolvedInput}]</i>`);
+    }
+
+    // --- Decision Point Gate: check before executing any action ---
+    const decision = checkDecisionPoints(state);
+    if (decision) {
+        state.pendingDecision = decision;
+        renderDecisionModal(decision);
+        return; // Halt tick until player chooses
+    }
+
+    // From here on, use resolvedInput everywhere playerAction was used
+    const playerAction = resolvedInput;
     state.isWriting = true;
     updateUI(); // Disables UI inputs immediately to prevent concurrent actions!
 
@@ -810,6 +858,12 @@ Describe the specified target. Output EXACTLY this JSON: { "description": "Your 
 
     // Generate and typewrite the chronicle paragraph
     await finalizeAction();
+
+    // --- AutoPlay: schedule the next auto-tick if still enabled ---
+    if (state.autoPlayEnabled && !state.pendingDecision && state.storyState === 'pending') {
+        setTimeout(() => tickGame(null), state.autoPlayIntervalMs);
+    }
+
     } catch (err) {
         console.error("Error during tickGame execution:", err);
         state.isWriting = false;
@@ -1286,4 +1340,117 @@ window.onload = () => {
     document.getElementById("command-form").addEventListener("submit", handleCommandInput);
     initCollapsiblePanels();
     initNarratorToggle();
+    initAutoPlayControls();
 };
+
+// --- AUTOPLAY UI ---
+
+function updateAutoPlayButton() {
+    const btn = document.getElementById('autoplay-toggle');
+    if (!btn) return;
+    if (state.autoPlayEnabled) {
+        btn.textContent = '⏸ Pause';
+        btn.classList.add('active');
+    } else {
+        btn.textContent = '▶ AutoPlay';
+        btn.classList.remove('active');
+    }
+}
+
+function initAutoPlayControls() {
+    const btn = document.getElementById('autoplay-toggle');
+    const slider = document.getElementById('autoplay-speed');
+    const speedLabel = document.getElementById('autoplay-speed-label');
+
+    if (btn) {
+        btn.addEventListener('click', () => {
+            state.autoPlayEnabled = !state.autoPlayEnabled;
+            updateAutoPlayButton();
+            if (state.autoPlayEnabled && !state.isWriting && state.storyState === 'pending') {
+                logGame('system', '<i>[AutoPlay started — the story will advance automatically. Type anything to intervene.]</i>');
+                setTimeout(() => tickGame(null), state.autoPlayIntervalMs);
+            } else if (!state.autoPlayEnabled) {
+                logGame('system', '<i>[AutoPlay paused.]</i>');
+            }
+        });
+    }
+
+    if (slider && speedLabel) {
+        slider.addEventListener('input', () => {
+            state.autoPlayIntervalMs = parseInt(slider.value, 10);
+            speedLabel.textContent = `${(state.autoPlayIntervalMs / 1000).toFixed(1)}s`;
+        });
+    }
+}
+
+function renderDecisionModal(decision) {
+    // Remove any existing modal
+    const existing = document.getElementById('decision-modal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'decision-modal';
+    overlay.className = 'decision-overlay';
+
+    const box = document.createElement('div');
+    box.className = 'decision-box';
+
+    const promptEl = document.createElement('p');
+    promptEl.className = 'decision-prompt';
+    promptEl.textContent = decision.prompt;
+    box.appendChild(promptEl);
+
+    const choicesEl = document.createElement('div');
+    choicesEl.className = 'decision-choices';
+
+    decision.choices.forEach((choice, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'btn decision-btn';
+        btn.id = `decision-choice-${idx}`;
+        btn.textContent = choice.label;
+        btn.addEventListener('click', () => resolveDecision(decision, choice));
+        choicesEl.appendChild(btn);
+    });
+
+    box.appendChild(choicesEl);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    // Trigger fade-in
+    requestAnimationFrame(() => overlay.classList.add('visible'));
+}
+
+function resolveDecision(decision, choice) {
+    // Record decision
+    if (!state.decisionsLog) state.decisionsLog = {};
+    state.decisionsLog[decision.id] = choice.label;
+    state.pendingDecision = null;
+
+    // Apply choice mutations via the director's executeMutations (re-export not needed — inline)
+    if (choice.mutations && choice.mutations.length > 0) {
+        choice.mutations.forEach(mut => {
+            if (mut.type === 'set_desires') {
+                const actor = state.actors[mut.actorId];
+                if (actor && mut.desires) {
+                    for (const key in mut.desires) actor.desires[key] = mut.desires[key];
+                }
+            }
+            // Other mutation types can be added here as needed
+        });
+    }
+
+    // Log the consequence to the game terminal
+    logGame('event', `<b>[Your Choice: "${choice.label}"]</b> ${choice.consequence}`);
+
+    // Remove modal
+    const overlay = document.getElementById('decision-modal');
+    if (overlay) {
+        overlay.classList.remove('visible');
+        setTimeout(() => overlay.remove(), 400);
+    }
+
+    // Resume AutoPlay if it was on
+    if (state.autoPlayEnabled && state.storyState === 'pending') {
+        setTimeout(() => tickGame(null), state.autoPlayIntervalMs);
+    }
+}

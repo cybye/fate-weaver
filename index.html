@@ -41,6 +41,14 @@
                     <!-- Logs will be appended here -->
                 </div>
                 <div class="action-bar">
+                    <div class="autoplay-controls">
+                        <button id="autoplay-toggle" class="btn btn-autoplay" title="Let the story advance automatically">&#9654; AutoPlay</button>
+                        <div class="autoplay-speed-row">
+                            <label for="autoplay-speed" class="autoplay-speed-label">Speed</label>
+                            <input type="range" id="autoplay-speed" min="1000" max="10000" step="500" value="4000" class="autoplay-slider">
+                            <span id="autoplay-speed-label" class="autoplay-speed-value">4.0s</span>
+                        </div>
+                    </div>
                     <div class="action-buttons" id="action-buttons">
                         <!-- Dynamic buttons will appear here -->
                     </div>

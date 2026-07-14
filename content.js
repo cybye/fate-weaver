@@ -354,6 +354,31 @@ export const STORY_DAG = {
             title: "The Scroll's Delivery",
             description: "Meet Bob at the Castle Gates to receive the Secret Scroll before turn 10.",
             maxTurns: 10,
+            // AutoPlayer persona for this milestone chapter
+            playerPersona: "a wary but curious traveler who has just arrived in town and is eager to find out what's going on. You ask questions before acting, and trust your instincts about people.",
+            // Decision points: content-defined gates that pause AutoPlay and ask the real player to choose
+            decisionPoints: [
+                {
+                    id: "trust_sly_early",
+                    condition: (state) =>
+                        state.playerLocation === "tavern" &&
+                        state.actors.sly?.location === "tavern" &&
+                        state.turn >= 2,
+                    prompt: "Sly sidles up to you in the tavern with a knowing smirk. \"I know what Bob is carrying,\" he whispers. \"We could split it. Or you could try your luck alone.\" What do you do?",
+                    choices: [
+                        {
+                            label: "Hear him out — carefully",
+                            mutations: [{ type: "set_desires", actorId: "sly", desires: { steal: 10, wander: 40 } }],
+                            consequence: "Sly lowers his guard slightly. He trails you, but is less aggressive for now."
+                        },
+                        {
+                            label: "Refuse and walk away",
+                            mutations: [],
+                            consequence: "Sly's eyes narrow. He slinks back into the shadows — still watching."
+                        }
+                    ]
+                }
+            ],
             updateObjectives: (state) => {
                 const isPlayerFollowing = (actorId) => state.followingActorId === actorId;
                 if (state.actors.bob) {
@@ -559,6 +584,30 @@ Output EXACTLY this JSON:
             title: "Brewing the Reveal Potion",
             description: "Take the Secret Scroll to the Alchemist Shop to brew a revealing potion within 8 turns.",
             maxTurns: 8,
+            // AutoPlayer persona shifts — player now has the scroll and knows the stakes
+            playerPersona: "a traveler who has just received an urgent mission. You move with purpose toward the Alchemist Shop, but you remain alert for the thief Sly who is shadowing you.",
+            decisionPoints: [
+                {
+                    id: "confront_sly_alchemist",
+                    condition: (state) =>
+                        state.actors.sly?.location === state.playerLocation &&
+                        state.playerInventory?.includes("Secret Scroll") &&
+                        state.playerLocation !== "gates",
+                    prompt: "Sly steps directly into your path, blocking the way. \"Hand over the scroll and I'll let you pass. Make a scene, and everyone loses.\" Your move.",
+                    choices: [
+                        {
+                            label: "Shout for the Guard!",
+                            mutations: [],
+                            consequence: "Your shout echoes through the street. Sly flinches — and bolts."
+                        },
+                        {
+                            label: "Try to bluff past him",
+                            mutations: [],
+                            consequence: "You keep walking, heart hammering. Sly lets you by — for now."
+                        }
+                    ]
+                }
+            ],
             updateObjectives: (state) => {
                 const isPlayerFollowing = (actorId) => state.followingActorId === actorId;
                 if (state.actors.bob) {
@@ -869,5 +918,29 @@ Rules:
 {{
   "paragraph": "Your novelized paragraph here."
 }}`;
+export const AUTOPLAYER_PROMPT_TEMPLATE = `You are a player character in a text adventure game.
+Your personality: {player_persona}
 
+Current location: {location}
+Your inventory: {inventory}
+Story objective: {objective}
+Characters present in your room: {present_npcs}
+Adjacent exits you can move to: {neighbors}
 
+Rules:
+- Act in-character based on your personality — you do not always rush to the objective.
+- If characters are present in your room, strongly prefer talking to them before moving.
+- Choose the action that best serves both your character's nature and the current story moment.
+- Do not revisit a room you just came from unless there is a strong reason.
+
+Output EXACTLY this JSON:
+{{
+  "tool_name": "travel" | "converse" | "wait" | "examine",
+  "arguments": {{
+    // For travel: {{ "destination": "room_key" }}
+    // For converse: {{ "character_id": "npc_id" }}
+    // For examine: {{ "target": "item or character name" }}
+    // For wait: {{}}
+  }},
+  "thought": "Brief in-character reasoning for this choice."
+}}`;
