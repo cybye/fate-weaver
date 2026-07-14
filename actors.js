@@ -26,7 +26,12 @@ export function broadcastEvent(state, event, logGame) {
                 }
             } else {
                 const targetName = state.actors[event.targetActorId] ? state.actors[event.targetActorId].name : "someone";
+                // Vague hint in the game terminal — player character didn't notice
                 logGame("event", `<b>[Perception Check: FAILED]</b> <i>You catch a subtle rustle of clothing and a shadow brushing past ${targetName}...</i>`);
+                // Omniscient narrator note — writer sees the truth, player terminal doesn't
+                if (event.narratorNote) {
+                    logGame("narrator", event.narratorNote);
+                }
                 console.log(`Player failed to perceive stealth event in room: ${event.description}`);
             }
         } else {
@@ -276,7 +281,8 @@ export async function updateActor(actorId, state, logGame, logDirector, isLLMAct
                 originActorId: "sly",
                 targetActorId: targetId,
                 isStealth: true,
-                playerMessage: `Sly pickpockets ${targetId === "player" ? "you" : "Bob"} and steals the Secret Scroll!`
+                playerMessage: `Sly pickpockets ${targetId === "player" ? "you" : "Bob"} and steals the Secret Scroll!`,
+                narratorNote: `Unseen by the traveler, Sly's fingers found the Secret Scroll and drew it silently away into the folds of his cloak.`
             }, logGame);
         } else if (resultText) {
             logGame("npc", resultText);
@@ -415,7 +421,8 @@ Decide your action.`;
                     originActorId: actor.id,
                     targetActorId: "player",
                     isStealth: true,
-                    playerMessage: `${actor.name} bumps into you! You check your pockets and gasp... your ${stolenItem} is gone!`
+                    playerMessage: `${actor.name} bumps into you! You check your pockets and gasp... your ${stolenItem} is gone!`,
+                    narratorNote: `What the traveler did not feel was the precise, practiced lift — Sly's hand moving with the unhurried confidence of a man who has done this a thousand times. The ${stolenItem} was gone before the traveler could draw their next breath.`
                 }, logGame);
             } else {
                 broadcastEvent(state, {
@@ -426,7 +433,8 @@ Decide your action.`;
                     originActorId: actor.id,
                     targetActorId: "player",
                     isStealth: true,
-                    playerMessage: `${actor.name} bumps into you! You check your pockets, but nothing was taken.`
+                    playerMessage: `${actor.name} bumps into you! You check your pockets, but nothing was taken.`,
+                    narratorNote: `Sly's fingers had found only empty cloth. He withdrew his hand, face unreadable, and melted back into the crowd.`
                 }, logGame);
             }
         } else if (state.actors[targetId] && actor.location === state.actors[targetId].location) {
@@ -443,7 +451,8 @@ Decide your action.`;
                     originActorId: actor.id,
                     targetActorId: targetActor.id,
                     isStealth: true,
-                    playerMessage: `${actor.name} pickpockets ${targetActor.name} and steals the Secret Scroll!`
+                    playerMessage: `${actor.name} pickpockets ${targetActor.name} and steals the Secret Scroll!`,
+                    narratorNote: `In plain sight yet unseen, ${actor.name}'s hand closed around the Secret Scroll in ${targetActor.name}'s satchel and withdrew it as smoothly as smoke. ${targetActor.name} felt nothing.`
                 }, logGame);
             } else {
                 broadcastEvent(state, {

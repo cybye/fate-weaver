@@ -25,6 +25,8 @@ export async function runWriter(state, turnLogs, isLLMActive) {
             return `NPC action/dialogue: ${cleanText}`;
         } else if (log.type === "event") {
             return `Story Event: ${cleanText}`;
+        } else if (log.type === "narrator") {
+            return `Omniscient Narrator observation (the player is unaware, but this should be woven into the chronicle prose): ${cleanText}`;
         } else if (log.type === "director-announce") {
             return `Fate Shift: ${cleanText}`;
         } else {
