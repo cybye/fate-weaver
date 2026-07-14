@@ -32,7 +32,29 @@ export async function callOllama(prompt, systemInstruction = "") {
         rawText = rawText.substring(start, end + 1);
     }
     
-    return JSON.parse(rawText);
+    try {
+        return JSON.parse(rawText);
+    } catch (parseError) {
+        console.warn("[Ollama Client] JSON parsing failed, attempting regex extraction fallback:", parseError);
+        
+        // Attempt to extract "paragraph" or "dialogue" field content via regex
+        const paragraphMatch = rawText.match(/"paragraph"\s*:\s*"([\s\S]*?)"\s*(?:,|\})/);
+        if (paragraphMatch) {
+            return { paragraph: paragraphMatch[1].trim() };
+        }
+        
+        const dialogueMatch = rawText.match(/"dialogue"\s*:\s*"([\s\S]*?)"\s*(?:,|\})/);
+        if (dialogueMatch) {
+            return { dialogue: dialogueMatch[1].trim() };
+        }
+        
+        // If it's just raw text, wrap it as a paragraph
+        if (rawText.length > 20 && !rawText.includes("{")) {
+            return { paragraph: rawText };
+        }
+        
+        throw parseError;
+    }
 }
 
 export async function testOllamaConnection() {
