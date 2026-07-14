@@ -81,23 +81,18 @@ function getEffectiveTargetRoom(state) {
     const activeMilestone = STORY_DAG.nodes[state.activeMilestoneId];
     if (!activeMilestone) return null;
 
-    let targetRoom = activeMilestone.pressureConfig?.targetRoom;
-    
-    // Determine the required item for this milestone
-    let requiredItem = null;
-    if (state.activeMilestoneId === "get_scroll" || state.activeMilestoneId === "brew_potion") {
-        requiredItem = "Secret Scroll";
-    } else if (state.activeMilestoneId === "warn_king") {
-        requiredItem = "Deciphered Message";
-    }
+    const targetRoom = activeMilestone.pressureConfig?.targetRoom;
+    const keyItems = activeMilestone.pressureConfig?.keyItems || [];
 
-    // If the player is missing the required item, find who has it!
-    if (requiredItem && (!state.playerInventory || !state.playerInventory.includes(requiredItem))) {
+    // Find any key items required for this milestone that the player is missing
+    const missingItem = keyItems.find(item => !state.playerInventory || !state.playerInventory.includes(item));
+
+    if (missingItem) {
         for (const actorId in state.actors) {
             const actor = state.actors[actorId];
-            if (actor.inventory && actor.inventory.includes(requiredItem)) {
-                console.log(`[AutoPlayer] Missing required item "${requiredItem}". Located holder: ${actor.name} at ${actor.location}.`);
-                return actor.location; // Head toward the actor holding our item!
+            if (actor.inventory && actor.inventory.includes(missingItem)) {
+                console.log(`[AutoPlayer] Missing key item "${missingItem}". Located holder: ${actor.name} at ${actor.location}.`);
+                return actor.location; // Redirect pathfinding to recover the key item!
             }
         }
     }

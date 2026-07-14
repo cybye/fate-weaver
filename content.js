@@ -654,7 +654,7 @@ Output EXACTLY this JSON:
             pressureConfig: {
                 targetRoom: "alchemist",
                 keyActors: [],
-                keyItems: []
+                keyItems: ["Secret Scroll"]
             },
             checkConvergence: (state) => {
                 const pLoc = state.playerLocation;
@@ -781,7 +781,7 @@ Output EXACTLY this JSON:
             pressureConfig: {
                 targetRoom: "keep",
                 keyActors: [],
-                keyItems: []
+                keyItems: ["Deciphered Message"]
             },
             checkConvergence: (state) => {
                 const pLoc = state.playerLocation;
