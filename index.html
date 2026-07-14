@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fate Weaver: Narrative Convergence Prototype</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@300;400;600;700&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="logo">
+                <span class="pulse-dot"></span>
+                <h1>FATE WEAVER</h1>
+                <span class="subtitle">Narrative Engine Prototype</span>
+            </div>
+            <div class="header-stats">
+
+                <div class="stat-box">
+                    <span class="stat-label">Turn</span>
+                    <span id="turn-counter" class="stat-value">0</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-label">Target State</span>
+                    <span id="target-state-badge" class="stat-value warning">Pending</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Workspace -->
+        <main class="app-main">
+            <!-- Left Column: Full-Height Game Terminal -->
+            <section class="panel game-panel">
+                <div class="panel-header">
+                    <h2>Game Channel</h2>
+                    <span class="badge">Live Terminal</span>
+                </div>
+                <div class="terminal-output" id="terminal-output">
+                    <!-- Logs will be appended here -->
+                </div>
+                <div class="action-bar">
+                    <div class="action-buttons" id="action-buttons">
+                        <!-- Dynamic buttons will appear here -->
+                    </div>
+                    <form id="command-form" class="command-form">
+                        <span class="prompt">&gt;</span>
+                        <input type="text" id="command-input" placeholder="Type a command (e.g., 'go square', 'wait', 'look')..." autocomplete="off">
+                    </form>
+                </div>
+            </section>
+
+            <!-- Right Column: Map, Brain, and Chronicle -->
+            <section class="panel-group">
+                <!-- Top: World Map Visualization -->
+                <div class="panel map-panel collapsed">
+                    <div class="panel-header">
+                        <h2>World Map</h2>
+                        <span class="badge secondary">Physics Layer</span>
+                    </div>
+                    <div class="map-viewport">
+                        <div class="map-connections" id="map-connections">
+                            <!-- Visual lines connecting nodes -->
+                        </div>
+                        <div class="map-nodes" id="map-nodes">
+                            <!-- Map rooms will be rendered here dynamically -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Middle: Director's Brain (The Hidden Engine) -->
+                <div class="panel director-panel collapsed">
+                    <div class="panel-header">
+                        <h2>Director's Brain</h2>
+                        <span class="badge danger">Hidden Layer</span>
+                    </div>
+                    <div class="director-dashboard">
+                        <!-- Top Row: Story Progression -->
+                        <div class="dashboard-row-progression">
+                            <div class="metric objective-metric">
+                                <span class="metric-label">Active Milestone Target</span>
+                                <div class="milestone-display-horizontal">
+                                    <div class="metric-value text-glow" id="active-milestone-title">Loading Milestone...</div>
+                                    <p class="milestone-desc" id="active-milestone-desc">Calculating story objectives...</p>
+                                </div>
+                                <div class="hud-stats-row-horizontal">
+                                    <span><strong>Path Distance:</strong> <span id="actor-distance">N/A</span></span>
+                                    <span style="margin-left: 20px;"><strong>Player Inventory:</strong> <span id="player-inventory" style="color: #fbbf24; font-family: 'Fira Code', monospace;">None</span></span>
+                                </div>
+                            </div>
+                            <div class="metric milestones-metric-container">
+                                <span class="metric-label">Story Milestones Progress</span>
+                                <div id="story-milestones-list" class="story-milestones-list-horizontal">
+                                    <!-- Dynamic checklist of milestones -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Bottom Row: Diagnostics -->
+                        <div class="dashboard-grid-horizontal">
+                            <div class="metric mode-metric">
+                                <span class="metric-label">Engine Mode</span>
+                                <span class="metric-value" id="director-mode">Passive Monitor</span>
+                            </div>
+                            <div class="metric utilities-metric">
+                                <span class="metric-label">NPC Utility Monitoring</span>
+                                <div id="actor-utilities-list" class="actor-utilities-list-horizontal">
+                                    <!-- Dynamic NPC desires will be injected here -->
+                                </div>
+                            </div>
+                            <div class="metric nudges-metric">
+                                <span class="metric-label">Active Nudges & Interventions</span>
+                                <div class="nudges-log" id="nudges-log">
+                                    <!-- Dynamic Director thoughts -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bottom: The Writer's Book Panel (Chronicle) -->
+                <div class="panel book-panel">
+                    <div class="panel-header">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="quill-icon" id="quill-icon">🖋️</span>
+                            <h2>The Chronicle</h2>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <button id="tts-toggle" class="btn-icon" title="Toggle Narrator Voice">🔊</button>
+                            <span class="badge secondary" id="writer-status">Scribe Idle</span>
+                        </div>
+                    </div>
+                    <div class="book-content" id="book-content">
+                        <div class="book-pages" id="book-pages">
+                            <p class="book-placeholder">The pages are blank. Begin the journey to write the chronicle...</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script type="module" src="game.js"></script>
+</body>
+</html>
