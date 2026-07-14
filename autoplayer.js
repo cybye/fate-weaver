@@ -71,15 +71,19 @@ function runAutoPlayerHeuristic(state) {
     const activeMilestone = STORY_DAG.nodes[state.activeMilestoneId];
     const neighbors = getNeighbors(state.playerLocation, state.blockedConnections);
 
-    // 1. Converse with any present NPC first (always, before moving)
+    // 1. Converse with a present NPC first (story-relevant ones take priority)
     const presentNPCs = Object.values(state.actors)
         .filter(a => a.location === state.playerLocation);
     if (presentNPCs.length > 0 && !state._autoPlayerConversedThisPause) {
-        // Mark that we conversed so we don't loop on it every turn
+        // Prefer story-relevant (keyActors) NPCs over bystanders
+        const activeMilestoneForNPC = STORY_DAG.nodes[state.activeMilestoneId];
+        const keyActors = activeMilestoneForNPC?.pressureConfig?.keyActors || [];
+        const priorityNPC = presentNPCs.find(a => keyActors.includes(a.id)) || presentNPCs[0];
+
         state._autoPlayerConversedThisPause = true;
         return {
             tool_name: 'converse',
-            arguments: { character_id: presentNPCs[0].id }
+            arguments: { character_id: priorityNPC.id }
         };
     }
     state._autoPlayerConversedThisPause = false;

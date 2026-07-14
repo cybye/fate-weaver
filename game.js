@@ -321,6 +321,12 @@ async function finalizeAction() {
     }
     state.isWriting = false;
     updateUI(); // Re-enables UI!
+
+    // Auto-tick scheduler: fires after EVERY action (ticking and non-ticking alike),
+    // so AutoPlay continues correctly even after converse / look / examine turns.
+    if (state.autoPlayEnabled && !state.pendingDecision && state.storyState === 'pending') {
+        setTimeout(() => tickGame(null), state.autoPlayIntervalMs);
+    }
 }
 
 // --- GAME TICK ENGINE ---
@@ -859,10 +865,6 @@ Describe the specified target. Output EXACTLY this JSON: { "description": "Your 
     // Generate and typewrite the chronicle paragraph
     await finalizeAction();
 
-    // --- AutoPlay: schedule the next auto-tick if still enabled ---
-    if (state.autoPlayEnabled && !state.pendingDecision && state.storyState === 'pending') {
-        setTimeout(() => tickGame(null), state.autoPlayIntervalMs);
-    }
 
     } catch (err) {
         console.error("Error during tickGame execution:", err);
