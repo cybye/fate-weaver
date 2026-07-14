@@ -84,7 +84,13 @@ function logGame(type, text) {
     }
 
     // Capture for the writer chronicle
-    if (type !== 'system' || (!text.includes('[Parsed Action:') && !text.includes('[System Fact Established:'))) {
+    const isTechnicalSystemLog = type === 'system' && (
+        text.includes('[Parsed Action:') || 
+        text.includes('[System Fact Established:') ||
+        text.includes('--- SIMULATION INITIALIZED ---') ||
+        text.startsWith('Goal: ')
+    );
+    if (!isTechnicalSystemLog) {
         currentTurnLogs.push({ type, text });
     }
 }
