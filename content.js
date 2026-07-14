@@ -149,6 +149,7 @@ Your Memories (most relevant first):
 {memories}
 
 Rules:
+- If there are multiple people in the room (more than just you and the victim), there are too many eyes/witnesses. You must hold back and set "steal_attempt" to "none".
 - If the player is in your room and is actively talking to you (e.g. they say "hi Sly" or address you), you should stay in the room and converse. Do not walk away immediately.
 
 You must formulate a multi-step travel plan to achieve your current target.
@@ -234,6 +235,10 @@ Output EXACTLY this JSON:
                 if (actor.location === state.actors.bob.location) victims.push("bob");
 
                 if (victims.length > 0) {
+                    const peopleInRoom = Object.values(state.actors).filter(a => a.location === actor.location).length + (state.playerLocation === actor.location ? 1 : 0);
+                    if (peopleInRoom > 2) {
+                        return "Sly glances around warily; with other people present, there are too many eyes to attempt a theft.";
+                    }
                     let chosen = victims[Math.floor(Math.random() * victims.length)];
                     if (chosen === "bob" && state.actors.bob.inventory.includes("Secret Scroll")) {
                         state.actors.bob.inventory = [];

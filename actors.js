@@ -404,7 +404,12 @@ Decide your action.`;
     // Process Theft actions generically
     if (res.steal_attempt && res.steal_attempt !== "none") {
         const targetId = res.steal_attempt;
-        if (targetId === "player" && actor.location === state.playerLocation) {
+        
+        // Count all characters in the room (including player and Sly)
+        const peopleInRoom = Object.values(state.actors).filter(a => a.location === actor.location).length + (state.playerLocation === actor.location ? 1 : 0);
+        if (peopleInRoom > 2) {
+            logGame("npc", `<i>${actor.name} glances around at the crowd. With too many eyes watching, the risk is too high, and they decide to hold back.</i>`);
+        } else if (targetId === "player" && actor.location === state.playerLocation) {
             const hasScroll = state.playerInventory && state.playerInventory.includes("Secret Scroll");
             const hasMessage = state.playerInventory && state.playerInventory.includes("Deciphered Message");
             
