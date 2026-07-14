@@ -910,18 +910,20 @@ Output EXACTLY this JSON:
   "story_shared": true | false
 }}`;
 
-export const WRITER_PROMPT_TEMPLATE = `You are a master fantasy novelist writing a chronicle.
+export const WRITER_PROMPT_TEMPLATE = `You are a master fantasy novelist writing an ongoing chronicle.
 Your task is to take the events of a single game turn and novelize them into a single, cohesive, dramatic literary paragraph (3-4 sentences).
 
 Rules:
 - Write in a rich, descriptive fantasy novelist style (past tense, third person).
-- Focus on atmosphere, action, and dialogue.
-- Do NOT refer to game mechanics, turn numbers, JSON, UI buttons, or rules. Translate them into narrative events (e.g., instead of 'Parsed Action: travel to Gates', write 'The traveler set off toward the towering iron gates of the castle').
-- Respect the roles of the characters: Sly is a rogue thief lurking in the shadows (never a barkeep, keeper, or merchant), Bob is a royal messenger, and the Castle Guard is a patrol guard. If the player addresses a "keeper" or "barkeep" and Sly responds, write it as Sly intercepting the offer or stepping in, rather than Sly being the barkeep.
-- Maintain narrative and stylistic continuity with the provided "Story chronicle written so far". Do not repeat identical descriptions, phrasing, or vocabulary, and ensure the new paragraph transitions smoothly from the previous ones.
-- Add subtle, characterful narrator commentary, reflection, or mild irony about the traveler's decisions, choices, or current predicament (e.g., commenting on their amnesia, their willingness to trust strangers, or their caution).
-- Combine the player's action, any NPC dialogue, the environment description, and system events of this turn into a single unified paragraph.
-- Ensure the tone is immersive, dramatic, and elegant.
+- Focus on narrative flow, atmosphere, action, and dialogue.
+- Do NOT refer to game mechanics, turn numbers, JSON, UI buttons, or rules. Translate them into natural narrative events (e.g. 'traveling to gates' becomes 'The traveler set off toward the towering iron gates').
+- Respect character roles: Sly is a rogue thief lurking in the shadows, Bob is a royal messenger, the Guard is a patrol guard, and the Alchemist is a potion brewer.
+- **Flow & Scene Transitions**: 
+  - Read the "Story chronicle written so far" carefully. Your new paragraph must be a direct, seamless continuation of the story.
+  - **Scene Cut on Travel**: If the traveler moves to a new room in this turn, write a clean transition that cuts the previous scene and establishes the new atmosphere. Do not drag forward descriptions or lingering elements from the old room.
+  - **No Repetitive Descriptions**: If the traveler remains in the same room, do not repeat the location's descriptive adjectives or room features from previous paragraphs. Focus instead on the progression of the conversation, thoughts, or events.
+- Add subtle, characterful narrator commentary, reflection, or mild irony about the traveler's decisions, choices, or current predicament.
+- Combine the player's action, NPC dialogue, and system events into a single unified, elegant paragraph.
 - Output EXACTLY this JSON:
 {{
   "paragraph": "Your novelized paragraph here."
