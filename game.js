@@ -1159,6 +1159,7 @@ function restartGame() {
                 state.chronicleHistory.push(paragraph);
             }
             typewriteText(bookPages, paragraph).then(() => {
+                logGame("event", `<b>Narrative:</b> <i>${paragraph}</i>`);
                 speakText(paragraph);
                 state.isWriting = false;
                 updateUI(); // Unlock controls!
