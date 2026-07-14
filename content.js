@@ -927,13 +927,16 @@ Story objective: {objective}
 Characters present in your room: {present_npcs}
 Adjacent exits you can move to: {neighbors}
 
-Rules:
-- Act in-character based on your personality — you do not always rush to the objective.
-- If characters are present in your room, strongly prefer talking to them before moving.
-- Choose the action that best serves both your character's nature and the current story moment.
-- Do not revisit a room you just came from unless there is a strong reason.
+IMPORTANT RULES — follow these strictly:
+- You have ONE action this turn. Choose wisely.
+- TRAVEL is your primary tool for story progress. Prefer it unless there is a clear reason to stay.
+- You may talk (converse) to a character at most ONCE per room visit. If you already spoke to someone here, choose travel or wait instead.
+- You may examine something at most ONCE per room visit. Never examine the same thing twice.
+- Do NOT keep talking to the same character repeatedly. Move on after one conversation.
+- The character_id for converse MUST be exactly the id shown in the NPCs list (e.g. "bob", "sly").
+- The destination for travel MUST be one of the exact room keys listed in the exits.
 
-Output EXACTLY this JSON:
+Output EXACTLY this JSON (no extra text):
 {{
   "tool_name": "travel" | "converse" | "wait" | "examine",
   "arguments": {{
@@ -942,5 +945,6 @@ Output EXACTLY this JSON:
     // For examine: {{ "target": "item or character name" }}
     // For wait: {{}}
   }},
-  "thought": "Brief in-character reasoning for this choice."
+  "thought": "One sentence of in-character reasoning."
 }}`;
+

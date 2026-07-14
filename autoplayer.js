@@ -13,9 +13,26 @@ import { callOllama } from './ollama.js';
  * @returns {Promise<{tool_name: string, arguments: object}>}
  */
 export async function runAutoPlayer(state, isLLMActive) {
+    // Reset the converse guard whenever the player moves to a new room
+    if (state._autoPlayerLastLocation !== state.playerLocation) {
+        state._autoPlayerLastLocation = state.playerLocation;
+        state._autoPlayerConversedThisPause = false;
+    }
+
+    // If we've already done a non-ticking social action this room visit,
+    // go straight to travel/wait — skip the LLM to avoid infinite loops.
+    if (state._autoPlayerConversedThisPause) {
+        return runMoveOrWait(state);
+    }
+
     if (isLLMActive) {
         try {
-            return await runAutoPlayerLLM(state);
+            const result = await runAutoPlayerLLM(state);
+            // If the LLM chose a non-ticking action, mark it so next tick forces movement
+            if (result.tool_name === 'converse' || result.tool_name === 'examine') {
+                state._autoPlayerConversedThisPause = true;
+            }
+            return result;
         } catch (e) {
             console.warn('[AutoPlayer] LLM failed, falling back to heuristics.', e);
         }
@@ -30,7 +47,7 @@ async function runAutoPlayerLLM(state) {
     const neighbors = getNeighbors(state.playerLocation, state.blockedConnections);
     const presentNPCs = Object.values(state.actors)
         .filter(a => a.location === state.playerLocation)
-        .map(a => `${a.name} (${a.role})`)
+        .map(a => `${a.name} (${a.role}, id: ${a.id})`)
         .join(', ') || 'Nobody';
 
     const playerPersona = activeMilestone?.playerPersona ||
@@ -55,29 +72,27 @@ async function runAutoPlayerLLM(state) {
         if (res.tool_name === 'travel') {
             const dest = res.arguments?.destination;
             if (!dest || !neighbors.includes(dest)) {
-                console.warn(`[AutoPlayer] LLM chose invalid travel destination "${dest}", healing to heuristic.`);
-                return runAutoPlayerHeuristic(state);
+                console.warn(`[AutoPlayer] LLM chose invalid travel destination "${dest}", falling back.`);
+                return runMoveOrWait(state);
             }
         }
         return { tool_name: res.tool_name, arguments: res.arguments || {} };
     }
 
-    return runAutoPlayerHeuristic(state);
+    return runMoveOrWait(state);
 }
 
 // --- HEURISTIC FALLBACK ---
 
 function runAutoPlayerHeuristic(state) {
-    const activeMilestone = STORY_DAG.nodes[state.activeMilestoneId];
-    const neighbors = getNeighbors(state.playerLocation, state.blockedConnections);
-
-    // 1. Converse with a present NPC first (story-relevant ones take priority)
+    // Converse with a present NPC if we haven't yet this room visit
     const presentNPCs = Object.values(state.actors)
         .filter(a => a.location === state.playerLocation);
+
     if (presentNPCs.length > 0 && !state._autoPlayerConversedThisPause) {
         // Prefer story-relevant (keyActors) NPCs over bystanders
-        const activeMilestoneForNPC = STORY_DAG.nodes[state.activeMilestoneId];
-        const keyActors = activeMilestoneForNPC?.pressureConfig?.keyActors || [];
+        const activeMilestone = STORY_DAG.nodes[state.activeMilestoneId];
+        const keyActors = activeMilestone?.pressureConfig?.keyActors || [];
         const priorityNPC = presentNPCs.find(a => keyActors.includes(a.id)) || presentNPCs[0];
 
         state._autoPlayerConversedThisPause = true;
@@ -86,24 +101,31 @@ function runAutoPlayerHeuristic(state) {
             arguments: { character_id: priorityNPC.id }
         };
     }
-    state._autoPlayerConversedThisPause = false;
 
-    // 2. 1-in-3 chance: inject a wait turn for pacing
+    return runMoveOrWait(state);
+}
+
+// --- SHARED MOVE-OR-WAIT LOGIC ---
+
+function runMoveOrWait(state) {
+    const activeMilestone = STORY_DAG.nodes[state.activeMilestoneId];
+    const neighbors = getNeighbors(state.playerLocation, state.blockedConnections);
+
+    // 1-in-3 chance: inject a wait turn for pacing / Director breathing room
     if (Math.random() < 1 / 3) {
         return { tool_name: 'wait', arguments: {} };
     }
 
-    // 3. Travel toward the milestone's target room (or wander if none)
+    // Travel toward the milestone's target room
     const targetRoom = activeMilestone?.pressureConfig?.targetRoom;
     if (targetRoom && state.playerLocation !== targetRoom) {
         const path = findPath(state.playerLocation, targetRoom, state.blockedConnections);
         if (path && path.length > 1) {
-            const nextRoom = path[1];
-            return { tool_name: 'travel', arguments: { destination: nextRoom } };
+            return { tool_name: 'travel', arguments: { destination: path[1] } };
         }
     }
 
-    // 4. Nothing better to do — wait
+    // Default: wait
     return { tool_name: 'wait', arguments: {} };
 }
 
