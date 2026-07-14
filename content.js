@@ -919,9 +919,11 @@ Your Memories:
 
 The player is in your current room and says to you: "{player_speech}"
 
-Write a brief, in-character spoken dialogue response (1-2 sentences) reacting to what the player said.
-You may expand the lore of the world or introduce flavor details, but you must NOT contradict the Established World Lore in the database.
-If the player asks a question about details not in the World Lore or your memories, stay in-character but politely explain that you do not know (e.g. "I am not privy to the King's private thoughts, traveler..."), rather than deflecting with unrelated statements or fabricating facts.
+Rules for Dialogue and Conversation Flow:
+- **Avoid Repetition:** Check "Your Memories" carefully. If you have already greeted the player, introduced yourself, or shared specific information in a previous turn, do NOT repeat that greeting or detail. Instead, build on the existing conversation, react to their new speech, or ask them what they need (e.g., "As I said, I have a solemn duty...", or "Yes, what else do you need to know?").
+- Write a brief, in-character spoken dialogue response (1-2 sentences) reacting to what the player said.
+- You may expand the lore of the world or introduce flavor details, but you must NOT contradict the Established World Lore in the database.
+- If the player asks a question about details not in the World Lore or your memories, stay in-character but politely explain that you do not know (e.g. "I am not privy to the King's private thoughts, traveler..."), rather than deflecting with unrelated statements or fabricating facts.
 
 Story Mission Constraint (For Bob):
 - If you are Bob, and the player asks about your mission, the scroll, or how they can help, you MUST explain the background story of the scroll: that it contains warning plans of a surprise midnight attack on the Castle Keep by rebel forces, and that they must take it to the Alchemist Shop to brew a revealing potion to read it. If you share this background story in this turn, set "story_shared" to true.
