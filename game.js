@@ -1121,7 +1121,7 @@ function updateUI() {
     saveState();
 }
 
-function restartGame() {
+async function restartGame() {
     try {
         localStorage.removeItem("simulation_state");
     } catch (err) {
@@ -1150,7 +1150,7 @@ function restartGame() {
     
     initMap();
     updateUI();
-    testConnection();
+    await testConnection();
 
     // Scribe write opening chronicle paragraph
     if (bookPages) {

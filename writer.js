@@ -122,7 +122,6 @@ function generateFallbackParagraph(state, turnLogs) {
             if (text.includes("says:")) {
                 dialogueLines.push(text);
             } else if (text.includes("[Plan Execution]")) {
-                // Parse and beautify Plan Execution
                 const match = text.match(/\[Plan Execution\]\s+(.+?)\s+moves to the\s+(.+?)\./i);
                 if (match) {
                     const name = match[1];
@@ -138,9 +137,22 @@ function generateFallbackParagraph(state, turnLogs) {
                     }
                 }
             } else if (text.includes("Thought:")) {
-                // Ignore NPC thoughts in the public book to keep it mysterious!
+                // Ignore NPC thoughts
             } else {
-                npcActions.push(text);
+                // Parse and beautify common heuristic fallback strings
+                let cleanNPC = text;
+                if (/Bob travels to the/i.test(cleanNPC)) {
+                    cleanNPC = cleanNPC.replace(/Bob travels to the\s+(.+?)\.?$/i, "Meanwhile, Bob set out on his errand, making his way toward the $1.");
+                } else if (/Sly the Thief sneaks into the/i.test(cleanNPC)) {
+                    cleanNPC = cleanNPC.replace(/(?:You catch a shadow moving\.\s*)?Sly the Thief sneaks into the\s+(.+?)\.?$/i, "Sly the Thief slipped silently into the shadows of the $1.");
+                } else if (/Sly the Thief flees to the/i.test(cleanNPC)) {
+                    cleanNPC = cleanNPC.replace(/(?:You catch a shadow darting away\.\s*)?Sly the Thief flees to the\s+(.+?)\.?$/i, "Alerted to danger, Sly the Thief fled in haste, retreating to the $1.");
+                } else if (/Castle Guard patrols to the/i.test(cleanNPC)) {
+                    cleanNPC = cleanNPC.replace(/Castle Guard patrols to the\s+(.+?)\.?$/i, "The heavy footsteps of the Castle Guard echoed as they patrolled toward the $1.");
+                } else if (/Sly waits in the shadows/i.test(cleanNPC)) {
+                    cleanNPC = "Sly lingered in the shadows, waiting for his moment to strike.";
+                }
+                npcActions.push(cleanNPC);
             }
         } else if (log.type === "event") {
             storyEvents.push(text);
@@ -172,22 +184,54 @@ function generateFallbackParagraph(state, turnLogs) {
     const locationName = ROOMS[state.playerLocation].name;
     let sentences = [];
 
-    // 1. Novelize the player action & movement
+    // 1. Novelize the player action & movement using rotating templates to prevent repetition
     if (playerAction) {
         const actionLower = playerAction.toLowerCase();
+        const turnIdx = state.turn || 0;
+        
         if (actionLower.startsWith("go to") || actionLower.startsWith("travel")) {
-            sentences.push(`The traveler set off on foot, crossing the threshold into the ${locationName}.`);
+            const travelTemplates = [
+                `The traveler set off on foot, crossing the threshold into the ${locationName}.`,
+                `Stepping forward, the traveler made their way toward the ${locationName}.`,
+                `The path led the traveler onward, bringing them eventually to the ${locationName}.`,
+                `With a steady stride, the traveler entered the quiet expanse of the ${locationName}.`
+            ];
+            sentences.push(travelTemplates[turnIdx % travelTemplates.length]);
         } else if (actionLower.startsWith("wait") || actionLower.includes("rest") || actionLower.includes("waited")) {
-            sentences.push(`The traveler paused to rest in the ${locationName}, letting the hours slip away as they watched the shadows lengthen.`);
+            const waitTemplates = [
+                `The traveler paused to rest in the ${locationName}, letting the hours slip away as they watched the shadows lengthen.`,
+                `A moment of quiet reflection took hold as the traveler lingered in the ${locationName}.`,
+                `Standing still in the ${locationName}, the traveler waited, listening to the ambient sounds of the castle grounds.`,
+                `The traveler decided to bide their time, keeping watch from a corner of the ${locationName}.`
+            ];
+            sentences.push(waitTemplates[turnIdx % waitTemplates.length]);
         } else if (actionLower.startsWith("examine") || actionLower.startsWith("inspect") || actionLower.startsWith("look at")) {
             const target = playerAction.substring(playerAction.indexOf("examine") + 7).trim();
-            sentences.push(`With close, examining eyes, the traveler drew near to inspect the ${target || "surroundings"}.`);
+            const targetStr = target || "surroundings";
+            const examineTemplates = [
+                `With close, examining eyes, the traveler drew near to inspect the ${targetStr}.`,
+                `The traveler bent down, scanning the ${targetStr} with careful scrutiny.`,
+                `Peering closely at the ${targetStr}, the traveler searched for hidden details.`,
+                `The traveler's eyes swept over the ${targetStr}, hunting for anything of note.`
+            ];
+            sentences.push(examineTemplates[turnIdx % examineTemplates.length]);
         } else if (actionLower.startsWith("talk") || actionLower.startsWith("converse") || actionLower.startsWith("speak")) {
-            sentences.push(`Seeking counsel, the traveler approached to converse with those nearby.`);
+            const converseTemplates = [
+                `Seeking counsel, the traveler approached to converse with those nearby.`,
+                `The traveler spoke up, addressing the figure standing before them.`,
+                `Looking to exchange words, the traveler initiated a conversation.`,
+                `The traveler drew closer to speak with the resident of the room.`
+            ];
+            sentences.push(converseTemplates[turnIdx % converseTemplates.length]);
         } else if (actionLower.startsWith("shout") || actionLower.includes("yell")) {
             sentences.push(`A sudden, piercing shout shattered the stillness of the ${locationName}.`);
         } else {
-            sentences.push(`The traveler resolved to act, choosing to ${playerAction}.`);
+            // General actions/dialogue typed by the user
+            if (/^[a-zA-Z0-9\s?,.!']+$/.test(playerAction) && playerAction.split(" ").length < 5) {
+                sentences.push(`The traveler spoke aloud into the room: "${playerAction}"`);
+            } else {
+                sentences.push(`The traveler turned their thoughts to action, attempting to ${playerAction}.`);
+            }
         }
     }
 
