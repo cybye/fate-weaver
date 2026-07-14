@@ -66,7 +66,7 @@ ${logSummary}`;
                 return result.paragraph.trim();
             }
         } catch (e) {
-            console.warn("Writer LLM failed, falling back to templates.", e);
+            console.error("[Writer Layer] LLM generation failed or returned invalid format. Falling back to templates. Exception details:", e);
         }
     }
 
