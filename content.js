@@ -929,11 +929,12 @@ Your inventory: {inventory}
 Story objective: {objective}
 Characters present in your room: {present_npcs}
 Adjacent exits you can move to: {neighbors}
+Recommended next step toward objective: {next_step_hint}
 
 IMPORTANT RULES — follow these strictly:
 - You have ONE action this turn. Choose wisely.
-- TRAVEL is your primary tool for story progress. Prefer it unless there is a clear reason to stay.
-- You may talk (converse) to a character at most ONCE per room visit. If you already spoke to someone here, choose travel or wait instead.
+- TRAVEL is your primary tool for story progress. Follow the recommended next step unless there is a strong narrative reason to stay (e.g. a key story character is present and you haven't spoken to them yet).
+- You may talk (converse) to a character at most ONCE per room visit. If you already spoke to someone here, choose travel instead.
 - You may examine something at most ONCE per room visit. Never examine the same thing twice.
 - Do NOT keep talking to the same character repeatedly. Move on after one conversation.
 - The character_id for converse MUST be exactly the id shown in the NPCs list (e.g. "bob", "sly").
@@ -950,4 +951,5 @@ Output EXACTLY this JSON (no extra text):
   }},
   "thought": "One sentence of in-character reasoning."
 }}`;
+
 

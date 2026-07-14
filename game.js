@@ -58,7 +58,8 @@ function createInitialState() {
         _autoPlayerConversedThisPause: false,
         _autoPlayerLastLocation: null,
         _autoConversationTarget: null,
-        _autoConversationRounds: 0
+        _autoConversationRounds: 0,
+        _autoPlayTimeoutId: null
     };
 }
 
@@ -327,8 +328,15 @@ async function finalizeAction() {
 
     // Auto-tick scheduler: fires after EVERY action (ticking and non-ticking alike),
     // so AutoPlay continues correctly even after converse / look / examine turns.
+    // Cancel any existing pending tick first to prevent double-loop race conditions.
     if (state.autoPlayEnabled && !state.pendingDecision && state.storyState === 'pending') {
-        setTimeout(() => tickGame(null), state.autoPlayIntervalMs);
+        if (state._autoPlayTimeoutId !== null) {
+            clearTimeout(state._autoPlayTimeoutId);
+        }
+        state._autoPlayTimeoutId = setTimeout(() => {
+            state._autoPlayTimeoutId = null;
+            tickGame(null);
+        }, state.autoPlayIntervalMs);
     }
 }
 
@@ -1369,11 +1377,19 @@ function initAutoPlayControls() {
 
     if (btn) {
         btn.addEventListener('click', () => {
+            // Cancel any pending tick before toggling state
+            if (state._autoPlayTimeoutId !== null) {
+                clearTimeout(state._autoPlayTimeoutId);
+                state._autoPlayTimeoutId = null;
+            }
             state.autoPlayEnabled = !state.autoPlayEnabled;
             updateAutoPlayButton();
             if (state.autoPlayEnabled && !state.isWriting && state.storyState === 'pending') {
                 logGame('system', '<i>[AutoPlay started — the story will advance automatically. Type anything to intervene.]</i>');
-                setTimeout(() => tickGame(null), state.autoPlayIntervalMs);
+                state._autoPlayTimeoutId = setTimeout(() => {
+                    state._autoPlayTimeoutId = null;
+                    tickGame(null);
+                }, 500); // Short delay so button feedback renders first
             } else if (!state.autoPlayEnabled) {
                 logGame('system', '<i>[AutoPlay paused.]</i>');
             }

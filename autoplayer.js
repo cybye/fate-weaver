@@ -90,13 +90,27 @@ async function runAutoPlayerLLM(state) {
     const playerPersona = activeMilestone?.playerPersona ||
         'a cautious traveler trying to do what is right';
 
+    // Compute pathfinding hint so the LLM knows which direction is "toward the goal"
+    const targetRoom = activeMilestone?.pressureConfig?.targetRoom;
+    let nextStepHint = 'No specific destination required — explore freely.';
+    if (targetRoom && state.playerLocation !== targetRoom) {
+        const path = findPath(state.playerLocation, targetRoom, state.blockedConnections);
+        if (path && path.length > 1) {
+            const nextRoomId = path[1];
+            nextStepHint = `Go to ${ROOMS[nextRoomId].name} (${nextRoomId}) — this is the next step on the optimal path to your objective.`;
+        }
+    } else if (targetRoom && state.playerLocation === targetRoom) {
+        nextStepHint = `You are already at the objective location (${ROOMS[targetRoom].name}). Stay or interact.`;
+    }
+
     const systemPrompt = AUTOPLAYER_PROMPT_TEMPLATE
         .replace('{player_persona}', playerPersona)
         .replace('{location}', `${ROOMS[state.playerLocation].name} (${state.playerLocation})`)
         .replace('{inventory}', JSON.stringify(state.playerInventory || []))
         .replace('{objective}', activeMilestone?.description || 'Progress the story.')
         .replace('{present_npcs}', presentNPCs)
-        .replace('{neighbors}', neighbors.map(n => `${n} (${ROOMS[n].name})`).join(', ') || 'none');
+        .replace('{neighbors}', neighbors.map(n => `${n} (${ROOMS[n].name})`).join(', ') || 'none')
+        .replace('{next_step_hint}', nextStepHint);
 
     const prompt = `Decide your action for this turn.`;
     const res = await callOllama(prompt, systemPrompt);
