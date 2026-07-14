@@ -577,7 +577,7 @@ async function tickGame(playerInput) {
             // Broadcast dialogue event (Importance 6)
             broadcastEvent(state, {
                 type: "dialogue",
-                description: `Player talked to ${actor.name}: "${playerAction}"`,
+                description: `Player said: "${playerAction}". ${actor.name} replied: "${spokenReply}"`,
                 location: state.playerLocation,
                 importance: 6,
                 originActorId: "player",
@@ -796,6 +796,14 @@ Describe the specified target. Output EXACTLY this JSON: { "description": "Your 
                         }
                     }
                     logGame("npc", `<b>${actor.name} says:</b> "${spoken}"`);
+                    broadcastEvent(state, {
+                        type: "dialogue",
+                        description: `${actor.name} said: "${spoken}"`,
+                        location: actor.location,
+                        importance: 6,
+                        originActorId: actor.id,
+                        targetActorId: "player"
+                    }, logGame);
                 }
             }
 
@@ -841,6 +849,14 @@ Describe the specified target. Output EXACTLY this JSON: { "description": "Your 
                         }
                     }
                     logGame("npc", `<b>${actor.name} says:</b> "${spoken}"`);
+                    broadcastEvent(state, {
+                        type: "dialogue",
+                        description: `${actor.name} said: "${spoken}"`,
+                        location: actor.location,
+                        importance: 6,
+                        originActorId: actor.id,
+                        targetActorId: "player"
+                    }, logGame);
                     
                     // Spontaneously publish shout event for Bob calling the guard!
                     publishEvent(state, {
