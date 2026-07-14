@@ -366,6 +366,31 @@ export const STORY_DAG = {
             // Decision points: content-defined gates that pause AutoPlay and ask the real player to choose
             decisionPoints: [
                 {
+                    id: "sly_ask_name",
+                    condition: (state) =>
+                        state.playerLocation === "tavern" &&
+                        state.actors.sly?.location === "tavern" &&
+                        state.turn === 1,
+                    prompt: "A shadow in the corner shifts. Sly the Thief leans forward, his dark eyes sizing you up. \"I don't believe we've been introduced, stranger,\" he purrs. \"What is your name?\"",
+                    choices: [
+                        {
+                            label: "Tell him your name is Leo",
+                            mutations: [{ type: "set_state", key: "playerName", value: "Leo" }],
+                            consequence: "\"Leo it is,\" Sly murmurs with a smirk. \"I'll remember that name, friend.\""
+                        },
+                        {
+                            label: "Give a fake alias: Shadow",
+                            mutations: [{ type: "set_state", key: "playerName", value: "Shadow" }],
+                            consequence: "\"A fitting alias for a tavern corner,\" Sly chuckles, raised a wooden goblet."
+                        },
+                        {
+                            label: "Refuse to answer and remain silent",
+                            mutations: [{ type: "set_state", key: "playerName", value: "the nameless traveler" }],
+                            consequence: "\"A quiet one, then. Suit yourself,\" Sly shrugs, shifting back into the dark."
+                        }
+                    ]
+                },
+                {
                     id: "trust_sly_early",
                     condition: (state) =>
                         state.playerLocation === "tavern" &&

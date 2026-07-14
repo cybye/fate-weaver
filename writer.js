@@ -63,7 +63,15 @@ ${logSummary}`;
 
             const result = await callOllama(prompt, WRITER_PROMPT_TEMPLATE);
             if (result && result.paragraph) {
-                return result.paragraph.trim();
+                let paragraph = result.paragraph.trim();
+                if (state && state.playerName) {
+                    const name = state.playerName;
+                    const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
+                    paragraph = paragraph
+                        .replace(/\bThe traveler\b/g, capitalizedName)
+                        .replace(/\bthe traveler\b/g, name);
+                }
+                return paragraph;
             }
         } catch (e) {
             console.error("[Writer Layer] LLM generation failed or returned invalid format. Falling back to templates. Exception details:", e);
@@ -71,7 +79,15 @@ ${logSummary}`;
     }
 
     // Heuristic fallback storyteller
-    return generateFallbackParagraph(state, turnLogs);
+    let fallbackParagraph = generateFallbackParagraph(state, turnLogs);
+    if (state && state.playerName) {
+        const name = state.playerName;
+        const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
+        fallbackParagraph = fallbackParagraph
+            .replace(/\bThe traveler\b/g, capitalizedName)
+            .replace(/\bthe traveler\b/g, name);
+    }
+    return fallbackParagraph;
 }
 
 /**
@@ -193,7 +209,7 @@ function generateFallbackParagraph(state, turnLogs) {
             // Check if we have a room atmosphere description to weave in
             let roomDesc = "";
             if (systemDescriptions.length > 0) {
-                roomDesc = translatePronouns(systemDescriptions[0]).trim();
+                roomDesc = translatePronouns(systemDescriptions[0], state).trim();
                 // Lowercase the first char to append smoothly
                 if (roomDesc.length > 0) {
                     roomDesc = roomDesc.charAt(0).toLowerCase() + roomDesc.slice(1);
@@ -248,7 +264,7 @@ function generateFallbackParagraph(state, turnLogs) {
 
     // 2. Add local room atmosphere descriptions if logged and not already consumed
     if (systemDescriptions.length > 0) {
-        let desc = translatePronouns(systemDescriptions[0]).trim();
+        let desc = translatePronouns(systemDescriptions[0], state).trim();
         if (desc.length > 0) {
             // Capitalize
             desc = desc.charAt(0).toUpperCase() + desc.slice(1);
@@ -259,7 +275,7 @@ function generateFallbackParagraph(state, turnLogs) {
     // 3. Add fate shifts and environmental interruptions
     if (fateShifts.length > 0) {
         fateShifts.forEach(shift => {
-            let cleanShift = translatePronouns(shift.replace(/^Fate Shift:\s*/i, ""));
+            let cleanShift = translatePronouns(shift.replace(/^Fate Shift:\s*/i, ""), state);
             if (cleanShift.length > 0) {
                 cleanShift = cleanShift.charAt(0).toUpperCase() + cleanShift.slice(1);
             }
@@ -270,7 +286,7 @@ function generateFallbackParagraph(state, turnLogs) {
     // 4. Add NPC movements or actions with smooth transitions
     if (npcActions.length > 0) {
         npcActions.forEach((action, idx) => {
-            let cleanAction = translatePronouns(action.replace(/^\[Plan Execution\]\s*/i, "").replace(/^\[Plan Aborted\]\s*/i, "")).trim();
+            let cleanAction = translatePronouns(action.replace(/^\[Plan Execution\]\s*/i, "").replace(/^\[Plan Aborted\]\s*/i, ""), state).trim();
             if (cleanAction.length > 0) {
                 // Prepend transitional phrasing to blend sentences
                 if (idx === 0) {
@@ -428,9 +444,9 @@ export function typewriteText(element, text, speed = 20) {
 /**
  * Helper to translate first/second person narrative descriptions into third-person past tense.
  */
-function translatePronouns(text) {
+function translatePronouns(text, state) {
     if (!text) return text;
-    return text
+    let res = text
         .replace(/\bYou step\b/ig, "They stepped")
         .replace(/\bYou scan\b/ig, "They scanned")
         .replace(/\bYou look closely at\b/ig, "They looked closely at")
@@ -452,6 +468,15 @@ function translatePronouns(text) {
         .replace(/\byou\b/g, "they")
         .replace(/\bYour\b/g, "Their")
         .replace(/\byour\b/g, "their");
+
+    if (state && state.playerName) {
+        const name = state.playerName;
+        const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
+        res = res
+            .replace(/\bThe traveler\b/g, capitalizedName)
+            .replace(/\bthe traveler\b/g, name);
+    }
+    return res;
 }
 
 /**

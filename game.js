@@ -1462,6 +1462,8 @@ function resolveDecision(decision, choice) {
                 if (actor && mut.desires) {
                     for (const key in mut.desires) actor.desires[key] = mut.desires[key];
                 }
+            } else if (mut.type === 'set_state') {
+                state[mut.key] = mut.value;
             }
             // Other mutation types can be added here as needed
         });
