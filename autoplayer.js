@@ -4,6 +4,8 @@ import { callOllama } from './ollama.js';
 
 // --- AUTOPLAYER: Acts as the player-character brain each tick ---
 
+const DEFAULT_MAX_CONVERSATION_ROUNDS = 2;
+
 /**
  * Produces a tool_call object (same shape as the tool-calling parser) that
  * represents the AutoPlayer's chosen action for this turn.
@@ -13,31 +15,66 @@ import { callOllama } from './ollama.js';
  * @returns {Promise<{tool_name: string, arguments: object}>}
  */
 export async function runAutoPlayer(state, isLLMActive) {
-    // Reset the converse guard whenever the player moves to a new room
+    const activeMilestone = STORY_DAG.nodes[state.activeMilestoneId];
+    const maxRounds = activeMilestone?.maxConversationRounds ?? DEFAULT_MAX_CONVERSATION_ROUNDS;
+
+    // Reset all conversation state whenever the player moves to a new room
     if (state._autoPlayerLastLocation !== state.playerLocation) {
         state._autoPlayerLastLocation = state.playerLocation;
         state._autoPlayerConversedThisPause = false;
+        state._autoConversationTarget = null;
+        state._autoConversationRounds = 0;
     }
 
-    // If we've already done a non-ticking social action this room visit,
-    // go straight to travel/wait — skip the LLM to avoid infinite loops.
+    // --- CASE 1: Mid-conversation — continue or close ---
+    if (state._autoConversationTarget) {
+        const target = state.actors[state._autoConversationTarget];
+        const targetStillPresent = target && target.location === state.playerLocation;
+
+        if (targetStillPresent && state._autoConversationRounds < maxRounds) {
+            // Continue the conversation for another round
+            state._autoConversationRounds++;
+            return { tool_name: 'converse', arguments: { character_id: state._autoConversationTarget } };
+        } else {
+            // Conversation is over — close it and hand off to the Director
+            console.log(`[AutoPlayer] Conversation with ${state._autoConversationTarget} closed after ${state._autoConversationRounds} round(s).`);
+            state._autoConversationTarget = null;
+            state._autoConversationRounds = 0;
+            state._autoPlayerConversedThisPause = true;
+            // Issue a ticking wait so the Director runs before we move
+            return { tool_name: 'wait', arguments: {} };
+        }
+    }
+
+    // --- CASE 2: Already conversed this room visit — move or wait ---
     if (state._autoPlayerConversedThisPause) {
         return runMoveOrWait(state);
     }
 
+    // --- CASE 3: Start a new conversation or choose another action ---
+    let result;
     if (isLLMActive) {
         try {
-            const result = await runAutoPlayerLLM(state);
-            // If the LLM chose a non-ticking action, mark it so next tick forces movement
-            if (result.tool_name === 'converse' || result.tool_name === 'examine') {
-                state._autoPlayerConversedThisPause = true;
-            }
-            return result;
+            result = await runAutoPlayerLLM(state);
         } catch (e) {
             console.warn('[AutoPlayer] LLM failed, falling back to heuristics.', e);
+            result = runAutoPlayerHeuristic(state);
         }
+    } else {
+        result = runAutoPlayerHeuristic(state);
     }
-    return runAutoPlayerHeuristic(state);
+
+    // If the chosen action starts a conversation, initialise the round tracker
+    if (result.tool_name === 'converse') {
+        state._autoConversationTarget = result.arguments.character_id;
+        state._autoConversationRounds = 1; // This first call counts as round 1
+    }
+    // Examine is a one-shot non-ticking action — mark it so we don't loop
+    if (result.tool_name === 'examine') {
+        state._autoPlayerConversedThisPause = true;
+    }
+
+    return result;
 }
 
 // --- LLM BRANCH ---

@@ -356,6 +356,8 @@ export const STORY_DAG = {
             maxTurns: 10,
             // AutoPlayer persona for this milestone chapter
             playerPersona: "a wary but curious traveler who has just arrived in town and is eager to find out what's going on. You ask questions before acting, and trust your instincts about people.",
+            // How many back-and-forth rounds AutoPlay will hold a conversation before closing it
+            maxConversationRounds: 3,
             // Decision points: content-defined gates that pause AutoPlay and ask the real player to choose
             decisionPoints: [
                 {
@@ -586,6 +588,7 @@ Output EXACTLY this JSON:
             maxTurns: 8,
             // AutoPlayer persona shifts — player now has the scroll and knows the stakes
             playerPersona: "a traveler who has just received an urgent mission. You move with purpose toward the Alchemist Shop, but you remain alert for the thief Sly who is shadowing you.",
+            maxConversationRounds: 2,
             decisionPoints: [
                 {
                     id: "confront_sly_alchemist",

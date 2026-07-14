@@ -55,7 +55,10 @@ function createInitialState() {
         autoPlayIntervalMs: 4000,
         pendingDecision: null,
         decisionsLog: {},
-        _autoPlayerConversedThisPause: false
+        _autoPlayerConversedThisPause: false,
+        _autoPlayerLastLocation: null,
+        _autoConversationTarget: null,
+        _autoConversationRounds: 0
     };
 }
 
