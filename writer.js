@@ -248,15 +248,18 @@ function generateFallbackParagraph(state, turnLogs) {
 
     // 2. Add local room atmosphere descriptions if logged and not already consumed
     if (systemDescriptions.length > 0) {
-        let desc = translatePronouns(systemDescriptions[0]);
-        sentences.push(desc);
+        let desc = translatePronouns(systemDescriptions[0]).trim();
+        if (desc.length > 0) {
+            // Capitalize
+            desc = desc.charAt(0).toUpperCase() + desc.slice(1);
+            sentences.push(desc);
+        }
     }
 
     // 3. Add fate shifts and environmental interruptions
     if (fateShifts.length > 0) {
         fateShifts.forEach(shift => {
             let cleanShift = translatePronouns(shift.replace(/^Fate Shift:\s*/i, ""));
-            // Capitalize first character
             if (cleanShift.length > 0) {
                 cleanShift = cleanShift.charAt(0).toUpperCase() + cleanShift.slice(1);
             }
@@ -264,11 +267,27 @@ function generateFallbackParagraph(state, turnLogs) {
         });
     }
 
-    // 4. Add NPC movements or actions
+    // 4. Add NPC movements or actions with smooth transitions
     if (npcActions.length > 0) {
-        npcActions.forEach(action => {
-            let cleanAction = translatePronouns(action.replace(/^\[Plan Execution\]\s*/i, "").replace(/^\[Plan Aborted\]\s*/i, ""));
-            sentences.push(cleanAction);
+        npcActions.forEach((action, idx) => {
+            let cleanAction = translatePronouns(action.replace(/^\[Plan Execution\]\s*/i, "").replace(/^\[Plan Aborted\]\s*/i, "")).trim();
+            if (cleanAction.length > 0) {
+                // Prepend transitional phrasing to blend sentences
+                if (idx === 0) {
+                    if (!/^Meanwhile/i.test(cleanAction) && !/^Alerted/i.test(cleanAction)) {
+                        cleanAction = "Meanwhile, " + cleanAction.charAt(0).toLowerCase() + cleanAction.slice(1);
+                    }
+                } else {
+                    if (!/^At the same time/i.test(cleanAction) && !/^Meanwhile/i.test(cleanAction)) {
+                        cleanAction = "At the same time, " + cleanAction.charAt(0).toLowerCase() + cleanAction.slice(1);
+                    }
+                }
+                // Ensure it ends with a period
+                if (!/[.!?]$/.test(cleanAction)) {
+                    cleanAction += ".";
+                }
+                sentences.push(cleanAction);
+            }
         });
     }
 
