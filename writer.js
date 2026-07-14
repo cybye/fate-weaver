@@ -202,35 +202,35 @@ function generateFallbackParagraph(state, turnLogs) {
             }
 
             const travelTemplates = [
-                `The traveler set off on foot, crossing the threshold into the ${locationName}${roomDesc ? `, where they were met by ${roomDesc}` : "."}`,
+                `Crossing the threshold, the path led directly into the ${locationName}${roomDesc ? `, where they were met by ${roomDesc}` : "."}`,
                 `Stepping forward, the traveler made their way toward the ${locationName}${roomDesc ? `—${roomDesc}` : "."}`,
-                `The path led the traveler onward, bringing them eventually to the ${locationName}${roomDesc ? `, a place defined by ${roomDesc}` : "."}`,
-                `With a steady stride, the traveler entered the quiet expanse of the ${locationName}${roomDesc ? `. Before them lay ${roomDesc}` : "."}`
+                `The journey continued onward, bringing the traveler eventually to the ${locationName}${roomDesc ? `, a place defined by ${roomDesc}` : "."}`,
+                `A steady stride carried the traveler into the quiet expanse of the ${locationName}${roomDesc ? `. Before them lay ${roomDesc}` : "."}`
             ];
             sentences.push(travelTemplates[turnIdx % travelTemplates.length]);
         } else if (actionLower.startsWith("wait") || actionLower.includes("rest") || actionLower.includes("waited")) {
             const waitTemplates = [
-                `The traveler paused to rest in the ${locationName}, letting the hours slip away as they watched the shadows lengthen.`,
-                `A moment of quiet reflection took hold as the traveler lingered in the ${locationName}.`,
-                `Standing still in the ${locationName}, the traveler waited, listening to the ambient sounds of the castle grounds.`,
-                `The traveler decided to bide their time, keeping watch from a corner of the ${locationName}.`
+                `A moment of quiet reflection took hold as the traveler lingered in the ${locationName}, letting the hours slip away.`,
+                `Standing still in the ${locationName}, a quiet watch was kept, listening to the ambient sounds of the castle.`,
+                `To bide their time, the traveler watched from a dim corner of the ${locationName}.`,
+                `The traveler paused to rest in the ${locationName}, letting the shadows lengthen in the hearth light.`
             ];
             sentences.push(waitTemplates[turnIdx % waitTemplates.length]);
         } else if (actionLower.startsWith("examine") || actionLower.startsWith("inspect") || actionLower.startsWith("look at")) {
             const target = playerAction.substring(playerAction.indexOf("examine") + 7).trim();
             const targetStr = target || "surroundings";
             const examineTemplates = [
-                `With close, examining eyes, the traveler drew near to inspect the ${targetStr}.`,
-                `The traveler bent down, scanning the ${targetStr} with careful scrutiny.`,
-                `Peering closely at the ${targetStr}, the traveler searched for hidden details.`,
-                `The traveler's eyes swept over the ${targetStr}, hunting for anything of note.`
+                `Scanning the ${targetStr} with careful scrutiny, a search began for hidden details.`,
+                `Close, examining eyes swept over the ${targetStr}, hunting for anything of note.`,
+                `Peering closely at the ${targetStr}, the traveler searched for hidden clues or details.`,
+                `The traveler bent down to inspect the ${targetStr} with close care.`
             ];
             sentences.push(examineTemplates[turnIdx % examineTemplates.length]);
         } else if (actionLower.startsWith("talk") || actionLower.startsWith("converse") || actionLower.startsWith("speak")) {
             const converseTemplates = [
-                `Seeking counsel, the traveler approached to converse with those nearby.`,
-                `The traveler spoke up, addressing the figure standing before them.`,
-                `Looking to exchange words, the traveler initiated a conversation.`,
+                `Seeking counsel, a quiet greeting was offered to those nearby.`,
+                `Approaching the figure standing before them, the traveler spoke up to address them.`,
+                `Words were exchanged as a conversation was initiated.`,
                 `The traveler drew closer to speak with the resident of the room.`
             ];
             sentences.push(converseTemplates[turnIdx % converseTemplates.length]);

@@ -916,10 +916,11 @@ Your task is to take the events of a single game turn and novelize them into a s
 Rules:
 - Write in a rich, descriptive fantasy novelist style (past tense, third person).
 - Focus on narrative flow, atmosphere, action, and dialogue.
-- Do NOT refer to game mechanics, turn numbers, JSON, UI buttons, or rules. Translate them into natural narrative events (e.g. 'traveling to gates' becomes 'The traveler set off toward the towering iron gates').
+- Do NOT refer to game mechanics, turn numbers, JSON, UI buttons, or rules. Translate them into natural narrative events (e.g. 'traveling to gates' becomes 'Crossing the threshold, the towering iron gates came into view').
 - Respect character roles: Sly is a rogue thief lurking in the shadows, Bob is a royal messenger, the Guard is a patrol guard, and the Alchemist is a potion brewer.
 - **Flow & Scene Transitions**: 
   - Read the "Story chronicle written so far" carefully. Your new paragraph must be a direct, seamless continuation of the story.
+  - **Paragraph Opening Variety**: Look at the opening sentences of the last 2-3 paragraphs. You MUST vary the opening of your new paragraph. Never repeat the same subject structure or starter words (e.g., if the previous paragraph started with "The traveler", start yours with an environmental detail, a sound, a passing of time, or an NPC's movement).
   - **Scene Cut on Travel**: If the traveler moves to a new room in this turn, write a clean transition that cuts the previous scene and establishes the new atmosphere. Do not drag forward descriptions or lingering elements from the old room.
   - **No Repetitive Descriptions**: If the traveler remains in the same room, do not repeat the location's descriptive adjectives or room features from previous paragraphs. Focus instead on the progression of the conversation, thoughts, or events.
 - Add subtle, characterful narrator commentary, reflection, or mild irony about the traveler's decisions, choices, or current predicament.
