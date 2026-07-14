@@ -190,11 +190,22 @@ function generateFallbackParagraph(state, turnLogs) {
         const turnIdx = state.turn || 0;
         
         if (actionLower.startsWith("go to") || actionLower.startsWith("travel")) {
+            // Check if we have a room atmosphere description to weave in
+            let roomDesc = "";
+            if (systemDescriptions.length > 0) {
+                roomDesc = translatePronouns(systemDescriptions[0]).trim();
+                // Lowercase the first char to append smoothly
+                if (roomDesc.length > 0) {
+                    roomDesc = roomDesc.charAt(0).toLowerCase() + roomDesc.slice(1);
+                }
+                systemDescriptions.shift(); // Consume the description
+            }
+
             const travelTemplates = [
-                `The traveler set off on foot, crossing the threshold into the ${locationName}.`,
-                `Stepping forward, the traveler made their way toward the ${locationName}.`,
-                `The path led the traveler onward, bringing them eventually to the ${locationName}.`,
-                `With a steady stride, the traveler entered the quiet expanse of the ${locationName}.`
+                `The traveler set off on foot, crossing the threshold into the ${locationName}${roomDesc ? `, where they were met by ${roomDesc}` : "."}`,
+                `Stepping forward, the traveler made their way toward the ${locationName}${roomDesc ? `—${roomDesc}` : "."}`,
+                `The path led the traveler onward, bringing them eventually to the ${locationName}${roomDesc ? `, a place defined by ${roomDesc}` : "."}`,
+                `With a steady stride, the traveler entered the quiet expanse of the ${locationName}${roomDesc ? `. Before them lay ${roomDesc}` : "."}`
             ];
             sentences.push(travelTemplates[turnIdx % travelTemplates.length]);
         } else if (actionLower.startsWith("wait") || actionLower.includes("rest") || actionLower.includes("waited")) {
@@ -235,7 +246,7 @@ function generateFallbackParagraph(state, turnLogs) {
         }
     }
 
-    // 2. Add local room atmosphere descriptions if logged
+    // 2. Add local room atmosphere descriptions if logged and not already consumed
     if (systemDescriptions.length > 0) {
         let desc = translatePronouns(systemDescriptions[0]);
         sentences.push(desc);
@@ -415,6 +426,10 @@ function translatePronouns(text) {
         .replace(/\bYou speak\b/ig, "They spoke")
         .replace(/\bYou talk\b/ig, "They talked")
         .replace(/\bYou shout\b/ig, "They shouted")
+        .replace(/\bhands you\b/ig, "handed the traveler")
+        .replace(/\bgives you\b/ig, "gave the traveler")
+        .replace(/\bis yours\b/ig, "was theirs")
+        .replace(/\byou have recovered\b/ig, "the traveler had recovered")
         .replace(/\byou\b/g, "they")
         .replace(/\bYour\b/g, "Their")
         .replace(/\byour\b/g, "their");
