@@ -85,6 +85,7 @@ ${logSummary}`;
             }
         }
     }
+    throw new Error("Chronicle generation failed to return a valid paragraph.");
 }
 
 function cleanParagraphText(text, state) {
@@ -109,6 +110,10 @@ function cleanParagraphText(text, state) {
  */
 export function typewriteText(element, text, speed = 20) {
     return new Promise((resolve) => {
+        if (!text) {
+            resolve();
+            return;
+        }
         const quill = document.getElementById("quill-icon");
         const status = document.getElementById("writer-status");
 
