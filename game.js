@@ -407,13 +407,21 @@ async function tickGame(playerInput) {
 
     // Log the player action
     let playerLogText = playerAction;
+    let shouldLogPlayerImmediately = true;
+    if (playerAction.startsWith("talk to ") || playerAction.startsWith("converse ") || playerAction.startsWith("say ") || playerAction.startsWith("ask ")) {
+        shouldLogPlayerImmediately = false;
+    }
+
     if (playerAction.startsWith("go_")) {
         const dest = playerAction.split("_")[1];
         playerLogText = `go to ${state.storyRooms[dest]?.name || dest}`;
     } else if (playerAction === "wait") {
         playerLogText = "wait";
     }
-    logGame("player", playerLogText);
+    
+    if (shouldLogPlayerImmediately) {
+        logGame("player", playerLogText);
+    }
 
     state.playerLastActionText = playerAction; // Save player input context for NPCs
 
@@ -571,9 +579,49 @@ async function tickGame(playerInput) {
         let targetId = toolCall.arguments.character_id;
         let actor = state.actors[targetId];
         if (actor && actor.location === state.playerLocation) {
+            let playerDialogue = "";
+            
+            // Check if player input is a generic talk-to command
+            const cleanAction = playerAction.toLowerCase().trim();
+            const isGenericCommand = cleanAction === `talk to ${actor.name.toLowerCase()}` || 
+                                     cleanAction === `talk to ${actor.id.toLowerCase()}` ||
+                                     cleanAction === `converse ${actor.id.toLowerCase()}`;
+                                     
+            if (state.autoPlayEnabled || isGenericCommand) {
+                if (state.isLLMActive) {
+                    try {
+                        const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
+                        const prompt = `Formulate a short spoken query (1 sentence) in-character as Leo, a traveler.
+Current Milestone Goal: ${activeMilestone?.description}
+You are talking to: ${actor.name} (${actor.role}) in the ${state.storyRooms[state.playerLocation].name}.
+Write what you say to them to progress your goal. Keep it brief and thematic.`;
+                        const systemPrompt = `You are Leo, a character in a fantasy RPG. Output EXACTLY this JSON: { "speech": "Your spoken sentence here" }`;
+                        
+                        const res = await callOllama(prompt, systemPrompt);
+                        if (res && res.speech) {
+                            playerDialogue = res.speech;
+                        }
+                    } catch (e) {
+                        console.warn("Failed to generate dynamic player speech:", e);
+                    }
+                }
+                if (!playerDialogue) {
+                    // Story-agnostic fallback that respects Principle 4 (Separation of Engine and Content)
+                    const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
+                    const goalDesc = activeMilestone?.description ? activeMilestone.description.toLowerCase() : "progress our journey";
+                    playerDialogue = `Greetings, ${actor.name}. I am ${state.playerName || "Leo"}. Can you help me? I need to ${goalDesc}.`;
+                }
+            } else {
+                // Preserve the human player's exact typed input message
+                playerDialogue = playerAction;
+            }
+
+            logGame("player", `${state.playerName || "Leo"} says: "${playerDialogue}"`);
+            actualActionText = `said: "${playerDialogue}"`;
+
             let spokenReply = "";
             if (state.isLLMActive) {
-                spokenReply = await generateNPCDialogueLLM(actor, playerAction);
+                spokenReply = await generateNPCDialogueLLM(actor, playerDialogue);
             } else {
                 spokenReply = actor.fallbackReply || "I have nothing to say.";
             }
@@ -584,7 +632,7 @@ async function tickGame(playerInput) {
             // Broadcast dialogue event (Importance 6)
             broadcastEvent(state, {
                 type: "dialogue",
-                description: `Player said: "${playerAction}". ${actor.name} replied: "${spokenReply}"`,
+                description: `Player said: "${playerDialogue}". ${actor.name} replied: "${spokenReply}"`,
                 location: state.playerLocation,
                 importance: 6,
                 originActorId: "player",
