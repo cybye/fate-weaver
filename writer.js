@@ -1,5 +1,5 @@
 import { callOllama } from './ollama.js';
-import { WRITER_PROMPT_TEMPLATE, ROOMS } from './content.js';
+import { WRITER_PROMPT_TEMPLATE } from './content.js';
 
 /**
  * Runs the Writer layer to generate a literary storybook paragraph for the current turn.
@@ -40,7 +40,7 @@ export async function runWriter(state, turnLogs, isLLMActive) {
 
     if (isLLMActive) {
         const actorsContext = Object.values(state.actors).map(actor => {
-            return `- ${actor.name}: ${actor.role} (located at the ${ROOMS[actor.location]?.name || actor.location})`;
+            return `- ${actor.name}: ${actor.role} (located at the ${state.storyRooms[actor.location]?.name || actor.location})`;
         }).join('\n');
 
         const historyWindow = (state.chronicleHistory || []).slice(-3);
@@ -49,7 +49,7 @@ export async function runWriter(state, turnLogs, isLLMActive) {
             : "(This is the beginning of the story.)";
 
         const prompt = `Game state context:
-- Player location: ${ROOMS[state.playerLocation].name}
+- Player location: ${state.storyRooms[state.playerLocation].name}
 - Player Inventory: ${JSON.stringify(state.playerInventory)}
 - Active Milestone: ${state.activeMilestoneId}
 
@@ -87,7 +87,7 @@ ${logSummary}`;
     // Pure generic atmospheric fallback prose (no technical diagnostics)
     const pName = state.playerName || "the traveler";
     const capName = pName.charAt(0).toUpperCase() + pName.slice(1);
-    const locationName = ROOMS[state.playerLocation].name;
+    const locationName = state.storyRooms[state.playerLocation].name;
     const turnIdx = state.turn || 0;
 
     const genericAtmosphereList = [
