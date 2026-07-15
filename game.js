@@ -541,7 +541,9 @@ async function tickGame(playerInput) {
         }
         await finalizeAction();
         return; // Non-ticking turn
-     if (toolCall.tool_name === "look") {
+    }
+
+    if (toolCall.tool_name === "look") {
         if (state.isLLMActive) {
             await runGameMasterLLM("looked around the room");
         } else {
