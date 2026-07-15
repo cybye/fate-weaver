@@ -49,7 +49,7 @@ export const STORY_CONFIG = {
                         choices: [
                             {
                                 label: "Harvest the Glow Mushroom carefully",
-                                mutations: [{ type: "set_state", key: "playerName", value: state.playerName || "Leo" }],
+                                mutations: [],
                                 consequence: "You carefully pluck the bioluminescent cap and place it in your satchel."
                             }
                         ]

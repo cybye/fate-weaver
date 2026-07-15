@@ -59,10 +59,14 @@ export async function callOllama(prompt, systemInstruction = "") {
 
 export async function testOllamaConnection() {
     const url = ENGINE_CONFIG.defaultOllamaUrl + "/api/tags";
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1500);
     try {
-        const res = await fetch(url);
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
         return res.ok;
     } catch (e) {
+        clearTimeout(timeoutId);
         return false;
     }
 }

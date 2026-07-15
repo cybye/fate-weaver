@@ -331,7 +331,7 @@ async function finalizeAction() {
     // Auto-tick scheduler: fires after EVERY action (ticking and non-ticking alike),
     // so AutoPlay continues correctly even after converse / look / examine turns.
     // Cancel any existing pending tick first to prevent double-loop race conditions.
-    if (state.autoPlayEnabled && !state.pendingDecision && state.storyState === 'pending') {
+    if (state.autoPlayEnabled && !state.pendingDecision && (state.storyState === 'pending' || state.storyState === 'running')) {
         if (state._autoPlayTimeoutId !== null) {
             clearTimeout(state._autoPlayTimeoutId);
         }
@@ -1217,7 +1217,7 @@ function handleCommandInput(event) {
     
     inputEl.value = "";
 
-    if (state.storyState !== "pending") {
+    if (state.storyState !== "pending" && state.storyState !== "running") {
         logGame("system", "The simulation has ended. Click 'Restart Simulation' to try again.");
         return;
     }
@@ -1424,7 +1424,7 @@ function initAutoPlayControls() {
             }
             state.autoPlayEnabled = !state.autoPlayEnabled;
             updateAutoPlayButton();
-            if (state.autoPlayEnabled && !state.isWriting && state.storyState === 'pending') {
+            if (state.autoPlayEnabled && !state.isWriting && (state.storyState === 'pending' || state.storyState === 'running')) {
                 logGame('system', '<i>[AutoPlay started — the story will advance automatically. Type anything to intervene.]</i>');
                 state._autoPlayTimeoutId = setTimeout(() => {
                     state._autoPlayTimeoutId = null;
@@ -1513,7 +1513,7 @@ function resolveDecision(decision, choice) {
     }
 
     // Resume AutoPlay if it was on
-    if (state.autoPlayEnabled && state.storyState === 'pending') {
+    if (state.autoPlayEnabled && (state.storyState === 'pending' || state.storyState === 'running')) {
         setTimeout(() => tickGame(null), state.autoPlayIntervalMs);
     }
 }
