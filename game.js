@@ -1180,7 +1180,11 @@ function updateUI() {
 
     const inputEl = document.getElementById("command-input");
     if (inputEl) {
+        const wasDisabled = inputEl.disabled;
         inputEl.disabled = state.isWriting;
+        if (wasDisabled && !state.isWriting && (state.storyState === "pending" || state.storyState === "running")) {
+            inputEl.focus();
+        }
     }
 
     if (state.storyState === "pending" || state.storyState === "running") {
