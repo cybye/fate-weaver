@@ -39,7 +39,7 @@ export async function callOllama(prompt, systemInstruction = "") {
         }
         
         try {
-            return JSON.parse(rawText);
+            return dirtyJsonParse(rawText);
         } catch (parseError) {
             console.warn("[Ollama Client] JSON parsing failed, attempting regex extraction fallback:", parseError);
             
@@ -62,6 +62,40 @@ export async function callOllama(prompt, systemInstruction = "") {
     } catch (e) {
         clearTimeout(timeoutId);
         throw e;
+    }
+}
+
+/**
+ * Resilient JSON parser that attempts to fix common LLM formatting issues
+ * (like unescaped quotes or newlines inside string values) before parsing.
+ */
+function dirtyJsonParse(rawText) {
+    let cleaned = rawText.trim();
+
+    // 1. Remove non-printable control characters
+    cleaned = cleaned.replace(/[\x00-\x09\x0B-\x0F\x10-\x1F\x7F]/g, "");
+
+    // 2. Escape internal unescaped quotes inside value fields
+    // Looks for: "key": "value" where value contains unescaped quotes
+    cleaned = cleaned.replace(/("[\w_]+")\s*:\s*"([\s\S]*?)"\s*(?=[,\]}])/g, (match, key, val) => {
+        let escapedVal = val.replace(/(?<!\\)"/g, '\\"');
+        return `${key}: "${escapedVal}"`;
+    });
+
+    // 3. Convert literal newlines within string values to escaped \n
+    cleaned = cleaned.replace(/("[\w_]+")\s*:\s*"([\s\S]*?)"\s*(?=[,\]}])/g, (match, key, val) => {
+        let escapedVal = val.replace(/\r?\n/g, '\\n');
+        return `${key}: "${escapedVal}"`;
+    });
+
+    // 4. Remove trailing commas before closing braces
+    cleaned = cleaned.replace(/,\s*([\]}])/g, "$1");
+
+    try {
+        return JSON.parse(cleaned);
+    } catch (err) {
+        // Final fallback: try raw text parsed directly
+        return JSON.parse(rawText);
     }
 }
 
