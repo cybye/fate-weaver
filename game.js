@@ -393,12 +393,9 @@ async function tickGame(playerInput) {
         logGame('system', `<i>[AutoPlay ▶ ${resolvedInput}]</i>`);
     }
 
-    // --- Decision Point Gate: check before executing any action ---
-    const decision = checkDecisionPoints(state);
-    if (decision) {
-        state.pendingDecision = decision;
-        renderDecisionModal(decision);
-        return; // Halt tick until player chooses
+    if (state.pendingDecision) {
+        console.warn("[TRACE] tickGame blocked by pending decision.");
+        return;
     }
 
     // From here on, use resolvedInput everywhere playerAction was used
@@ -1162,6 +1159,15 @@ function updateUI() {
         resetBtn.disabled = state.isWriting;
         resetBtn.onclick = () => restartGame();
         buttonsContainer.appendChild(resetBtn);
+    }
+
+    // Trigger decision points automatically during render
+    if (state.storyState === "pending" || state.storyState === "running") {
+        const decision = checkDecisionPoints(state);
+        if (decision && !state.pendingDecision) {
+            state.pendingDecision = decision;
+            renderDecisionModal(decision);
+        }
     }
     saveState();
 }
