@@ -113,6 +113,18 @@ function calculateNarrativePressure(state) {
     else if (pressure <= 1.5) mode = "Medium Nudges";
     else mode = "Strong Nudges";
 
+    // Stall warning escalation
+    const stallCount = state._playerTurnStallCount || 0;
+    if (stallCount >= 3) {
+        if (mode === "Passive Monitor" || mode === "Soft Nudges") {
+            mode = "Medium Nudges";
+        }
+    } else if (stallCount >= 2) {
+        if (mode === "Passive Monitor") {
+            mode = "Soft Nudges";
+        }
+    }
+
     // Turn warning escalation (last 2 turns of the milestone always escalate to Strong Nudges)
     if (remainingTurns <= 2) mode = "Strong Nudges";
 

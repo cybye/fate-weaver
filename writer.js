@@ -69,7 +69,18 @@ ${logSummary}`;
                 return cleanParagraphText(result.paragraph.trim(), state);
             }
         } catch (e) {
-            console.warn("[Writer Layer] LLM attempt timed out or failed. Falling back to generic atmosphere.", e);
+            console.warn("[Writer Layer] Primary LLM attempt failed, sleeping 300ms before retry...", e);
+            await sleep(300);
+            
+            // Attempt 2 (Retry)
+            try {
+                const result = await callOllama(prompt, WRITER_PROMPT_TEMPLATE);
+                if (result && result.paragraph) {
+                    return cleanParagraphText(result.paragraph.trim(), state);
+                }
+            } catch (retryError) {
+                console.error("[Writer Layer] LLM retry attempt failed. Falling back to dynamic chronicle summary.", retryError);
+            }
         }
     }
 
@@ -83,12 +94,44 @@ ${logSummary}`;
         `A heavy silence lingered over the ${locationName} as the paths of fate shifted.`,
         `Shadows lengthened across the ${locationName}, marking the steady passage of another quiet hour.`,
         `A cool breeze swept through the ${locationName} while the next choice remained hanging in the air.`,
-        `In the quiet expanse of the ${locationName}, ${capName} paused, waiting for the path forward to reveal itself.`,
-        `Steps echoed softly in the ${locationName}, blending into the ancient background hum of the stone walls.`,
-        `A moment of suspended tension gripped the ${locationName} as the ticking clock of destiny pressed onward.`
+        `The stone walls of the ${locationName} kept their ancient secrets close as time marched onward.`
     ];
 
-    return genericAtmosphereList[turnIdx % genericAtmosphereList.length];
+    // Scan turn logs for interesting actions to build a dynamic narrative fallback
+    let convergences = [];
+    let actions = [];
+    let dialogs = [];
+
+    turnLogs.forEach(log => {
+        const cleanText = log.text.replace(/<\/?[^>]+(>|$)/g, "").trim();
+        if (log.type === "system" && (cleanText.includes("STORY CONVERGENCE") || cleanText.includes("STORY ADVANCEMENT"))) {
+            convergences.push(cleanText.replace("STORY CONVERGENCE: ", "").replace("STORY ADVANCEMENT: ", ""));
+        } else if (log.type === "player" || log.type === "event") {
+            actions.push(cleanText);
+        } else if (log.type === "npc" && cleanText.includes("says:")) {
+            dialogs.push(cleanText);
+        }
+    });
+
+    let fallbackParagraph = "";
+    if (convergences.length > 0) {
+        fallbackParagraph += `${convergences.join(". ")} `;
+    }
+    if (dialogs.length > 0) {
+        fallbackParagraph += `During the encounter, ${dialogs.join(". ")} `;
+    }
+    if (actions.length > 0) {
+        fallbackParagraph += `Meanwhile, the traveler resolved to ${actions.join(", then ")}. `;
+    }
+
+    if (!fallbackParagraph) {
+        const idx = (turnIdx + locationName.length) % genericAtmosphereList.length;
+        fallbackParagraph = genericAtmosphereList[idx];
+    } else {
+        fallbackParagraph += `A heavy silence lingered over the ${locationName} as the paths of fate shifted.`;
+    }
+
+    return fallbackParagraph;
 }
 
 function cleanParagraphText(text, state) {

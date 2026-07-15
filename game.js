@@ -355,6 +355,7 @@ async function finalizeAction() {
 
 // --- GAME TICK ENGINE ---
 async function tickGame(playerInput) {
+    const oldLocation = state.playerLocation;
     console.log("[TRACE] tickGame called with input:", playerInput, "state.storyState:", state.storyState, "state.isWriting:", state.isWriting);
     if ((state.storyState !== "pending" && state.storyState !== "running") || state.isWriting) {
         console.warn("[TRACE] tickGame exited early. Blocked by state condition.");
@@ -887,6 +888,12 @@ Describe the specified target. Output EXACTLY this JSON: { "description": "Your 
             logGame("director-announce", `<b>STORY FAILED:</b> Milestone '${activeMilestone.title}' failed. Turn limit (${activeMilestone.maxTurns} turns) exceeded.`);
             logDirector(`FAILED: Milestone time limit exceeded.`);
         }
+    }
+
+    if (state.playerLocation !== oldLocation) {
+        state._playerTurnStallCount = 0;
+    } else {
+        state._playerTurnStallCount = (state._playerTurnStallCount || 0) + 1;
     }
 
     state.turn++;

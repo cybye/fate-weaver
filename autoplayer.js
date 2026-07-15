@@ -148,6 +148,15 @@ async function runAutoPlayerLLM(state) {
                 return runMoveOrWait(state);
             }
         }
+        // Validate conversation target
+        if (res.tool_name === 'converse') {
+            const charId = res.arguments?.character_id;
+            const keyActors = activeMilestone?.pressureConfig?.keyActors || [];
+            if (!charId || !keyActors.includes(charId)) {
+                console.warn(`[AutoPlayer] LLM chose to converse with non-key actor "${charId}", falling back to navigation.`);
+                return runMoveOrWait(state);
+            }
+        }
         return { tool_name: res.tool_name, arguments: res.arguments || {} };
     }
 
@@ -157,16 +166,15 @@ async function runAutoPlayerLLM(state) {
 // --- HEURISTIC FALLBACK ---
 
 function runAutoPlayerHeuristic(state) {
-    // Converse with a present NPC if we haven't yet this room visit
+    const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
+    const keyActors = activeMilestone?.pressureConfig?.keyActors || [];
     const presentNPCs = Object.values(state.actors)
         .filter(a => a.location === state.playerLocation);
+        
+    const relevantNPCs = presentNPCs.filter(a => keyActors.includes(a.id));
 
-    if (presentNPCs.length > 0 && !state._autoPlayerConversedThisPause) {
-        // Prefer story-relevant (keyActors) NPCs over bystanders
-        const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
-        const keyActors = activeMilestone?.pressureConfig?.keyActors || [];
-        const priorityNPC = presentNPCs.find(a => keyActors.includes(a.id)) || presentNPCs[0];
-
+    if (relevantNPCs.length > 0 && !state._autoPlayerConversedThisPause) {
+        const priorityNPC = relevantNPCs[0];
         state._autoPlayerConversedThisPause = true;
         return {
             tool_name: 'converse',
@@ -184,7 +192,10 @@ function runMoveOrWait(state) {
     const neighbors = getNeighbors(state.playerLocation, state.blockedConnections);
 
     // 1-in-3 chance: inject a wait turn for pacing / Director breathing room
-    if (Math.random() < 1 / 3) {
+    // Skip this random wait if pressure is high or player is stalling
+    const isPassive = (!state.directorMode || state.directorMode === "Passive Monitor");
+    const stallCount = state._playerTurnStallCount || 0;
+    if (isPassive && stallCount < 2 && Math.random() < 1 / 3) {
         return { tool_name: 'wait', arguments: {} };
     }
 
