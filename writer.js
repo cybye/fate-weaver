@@ -38,17 +38,20 @@ export async function runWriter(state, turnLogs, isLLMActive) {
 
     const logSummary = logSummaryLines.join('\n');
 
-    if (isLLMActive) {
-        const actorsContext = Object.values(state.actors).map(actor => {
-            return `- ${actor.name}: ${actor.role} (located at the ${state.storyRooms[actor.location]?.name || actor.location})`;
-        }).join('\n');
+    if (!isLLMActive) {
+        throw new Error("Local LLM engine is offline.");
+    }
 
-        const historyWindow = (state.chronicleHistory || []).slice(-3);
-        const historyContext = historyWindow.length > 0
-            ? historyWindow.join('\n\n')
-            : "(This is the beginning of the story.)";
+    const actorsContext = Object.values(state.actors).map(actor => {
+        return `- ${actor.name}: ${actor.role} (located at the ${state.storyRooms[actor.location]?.name || actor.location})`;
+    }).join('\n');
 
-        const prompt = `Game state context:
+    const historyWindow = (state.chronicleHistory || []).slice(-3);
+    const historyContext = historyWindow.length > 0
+        ? historyWindow.join('\n\n')
+        : "(This is the beginning of the story.)";
+
+    const prompt = `Game state context:
 - Player location: ${state.storyRooms[state.playerLocation].name}
 - Player Inventory: ${JSON.stringify(state.playerInventory)}
 - Active Milestone: ${state.activeMilestoneId}
@@ -62,76 +65,26 @@ ${historyContext}
 Logs from this turn:
 ${logSummary}`;
 
-        // Attempt 1
+    const maxAttempts = 4;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
+            console.log(`[Writer Layer] Attempting chronicle generation (Attempt ${attempt}/${maxAttempts})...`);
             const result = await callOllama(prompt, WRITER_PROMPT_TEMPLATE);
             if (result && result.paragraph) {
                 return cleanParagraphText(result.paragraph.trim(), state);
             }
         } catch (e) {
-            console.warn("[Writer Layer] Primary LLM attempt failed, sleeping 300ms before retry...", e);
-            await sleep(300);
-            
-            // Attempt 2 (Retry)
-            try {
-                const result = await callOllama(prompt, WRITER_PROMPT_TEMPLATE);
-                if (result && result.paragraph) {
-                    return cleanParagraphText(result.paragraph.trim(), state);
-                }
-            } catch (retryError) {
-                console.error("[Writer Layer] LLM retry attempt failed. Falling back to dynamic chronicle summary.", retryError);
+            console.warn(`[Writer Layer] Attempt ${attempt} failed:`, e);
+            if (attempt < maxAttempts) {
+                const sleepTime = 1000 * attempt; // Exponential backoff: 1s, 2s, 3s...
+                console.log(`[Writer Layer] Sleeping ${sleepTime}ms before retry...`);
+                await sleep(sleepTime);
+            } else {
+                console.error("[Writer Layer] All chronicle generation attempts failed.");
+                throw e; // Let tickGame handle the error and unlock UI
             }
         }
     }
-
-    // Pure generic atmospheric fallback prose (no technical diagnostics)
-    const pName = state.playerName || "the traveler";
-    const capName = pName.charAt(0).toUpperCase() + pName.slice(1);
-    const locationName = state.storyRooms[state.playerLocation].name;
-    const turnIdx = state.turn || 0;
-
-    const genericAtmosphereList = [
-        `A heavy silence lingered over the ${locationName} as the paths of fate shifted.`,
-        `Shadows lengthened across the ${locationName}, marking the steady passage of another quiet hour.`,
-        `A cool breeze swept through the ${locationName} while the next choice remained hanging in the air.`,
-        `The stone walls of the ${locationName} kept their ancient secrets close as time marched onward.`
-    ];
-
-    // Scan turn logs for interesting actions to build a dynamic narrative fallback
-    let convergences = [];
-    let actions = [];
-    let dialogs = [];
-
-    turnLogs.forEach(log => {
-        const cleanText = log.text.replace(/<\/?[^>]+(>|$)/g, "").trim();
-        if (log.type === "system" && (cleanText.includes("STORY CONVERGENCE") || cleanText.includes("STORY ADVANCEMENT"))) {
-            convergences.push(cleanText.replace("STORY CONVERGENCE: ", "").replace("STORY ADVANCEMENT: ", ""));
-        } else if (log.type === "player" || log.type === "event") {
-            actions.push(cleanText);
-        } else if (log.type === "npc" && cleanText.includes("says:")) {
-            dialogs.push(cleanText);
-        }
-    });
-
-    let fallbackParagraph = "";
-    if (convergences.length > 0) {
-        fallbackParagraph += `${convergences.join(". ")} `;
-    }
-    if (dialogs.length > 0) {
-        fallbackParagraph += `During the encounter, ${dialogs.join(". ")} `;
-    }
-    if (actions.length > 0) {
-        fallbackParagraph += `Meanwhile, the traveler resolved to ${actions.join(", then ")}. `;
-    }
-
-    if (!fallbackParagraph) {
-        const idx = (turnIdx + locationName.length) % genericAtmosphereList.length;
-        fallbackParagraph = genericAtmosphereList[idx];
-    } else {
-        fallbackParagraph += `A heavy silence lingered over the ${locationName} as the paths of fate shifted.`;
-    }
-
-    return fallbackParagraph;
 }
 
 function cleanParagraphText(text, state) {
