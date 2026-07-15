@@ -40,6 +40,10 @@ export const STORY_CONFIG = {
                 maxTurns: 5,
                 playerPersona: "a traveler seeking warm shelter from the storm. You don't know anything about any scroll or messenger yet; you are just looking for a friendly face or a rumor in the Tavern.",
                 maxConversationRounds: 2,
+                pressureConfig: {
+                    targetRoom: "tavern",
+                    keyActors: ["sly"]
+                },
                 decisionPoints: [
                     {
                         id: "sly_ask_name",
@@ -101,6 +105,10 @@ export const STORY_CONFIG = {
                 maxTurns: 6,
                 playerPersona: "a traveler looking for the royal messenger named Bob. You must verify his identity before you ask for the scroll.",
                 maxConversationRounds: 2,
+                pressureConfig: {
+                    targetRoom: "gates",
+                    keyActors: ["bob"]
+                },
                 decisionPoints: [],
                 updateObjectives: (state) => {
                     if (state.actors.bob) {
