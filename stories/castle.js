@@ -87,9 +87,42 @@ export const STORY_CONFIG = {
                     }
                     return { status: "running" };
                 },
-                nextNodes: ["get_scroll"],
+                nextNodes: ["identify_messenger"],
                 dialogueConstraints: {
                     sly: "Tell the player about a royal messenger named Bob who is carrying a secret scroll to the Castle Gates. Suggest they go get it."
+                }
+            },
+            identify_messenger: {
+                id: "identify_messenger",
+                title: "Find and Identify the Messenger",
+                description: "Find Bob and speak to him to verify if he is the royal messenger.",
+                maxTurns: 6,
+                playerPersona: "a traveler looking for the royal messenger named Bob. You must verify his identity before you ask for the scroll.",
+                maxConversationRounds: 2,
+                decisionPoints: [],
+                updateObjectives: (state) => {
+                    if (state.actors.bob) {
+                        state.actors.bob.criticalObjective = "Travel to the Castle Gates (gates). If the player is in your room and speaks to you, introduce yourself as Bob the royal messenger.";
+                    }
+                    if (state.actors.sly) {
+                        state.actors.sly.criticalObjective = "Follow Bob or the Player to the Town Square (square) or Castle Gates (gates).";
+                    }
+                },
+                convergenceCheck: (state) => {
+                    const spokeToBob = state.activeConversationTarget === "bob";
+                    if (spokeToBob) {
+                        return {
+                            status: "completed",
+                            fallbackSpeech: "Yes, I am Bob, the royal messenger. But we cannot speak of the scroll here—it is too dangerous. Follow me or meet me at the Castle Gates immediately.",
+                            actorSpeechId: "bob",
+                            msg: "STORY CONVERGENCE: You verify Bob's identity as the royal messenger carrying the scroll."
+                        };
+                    }
+                    return { status: "running" };
+                },
+                nextNodes: ["get_scroll"],
+                dialogueConstraints: {
+                    bob: "Introduce yourself as Bob the royal messenger. Warn them that it is too dangerous to speak here, and tell them to meet you at the Castle Gates."
                 }
             },
             get_scroll: {
@@ -97,7 +130,7 @@ export const STORY_CONFIG = {
                 title: "Obtain the Secret Scroll",
                 description: "Meet Bob at the Castle Gates to receive the Secret Scroll before turn 10.",
                 maxTurns: 10,
-                playerPersona: "a wary but curious traveler who has just learned about Bob and the Secret Scroll. You are heading to the Castle Gates to meet him.",
+                playerPersona: "a wary but curious traveler who has just verified Bob's identity. You are heading to the Castle Gates to receive the scroll.",
                 maxConversationRounds: 3,
                 decisionPoints: [
                     {
