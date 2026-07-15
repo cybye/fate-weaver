@@ -124,14 +124,23 @@ async function runAutoPlayerLLM(state) {
         nextStepHint = `You are already at the objective location (${state.storyRooms[targetRoom].name}). Stay or interact.`;
     }
 
+    let allowedTools = ['travel', 'wait', 'examine'];
+    let presentNPCsText = presentNPCs;
+    if (!state._autoPlayerConversedThisPause && presentNPCs !== 'Nobody') {
+        allowedTools.push('converse');
+    } else if (presentNPCs !== 'Nobody') {
+        presentNPCsText = `${presentNPCs} (You already spoke to them during this visit. Converse is disabled.)`;
+    }
+
     const systemPrompt = AUTOPLAYER_PROMPT_TEMPLATE
         .replace('{player_persona}', playerPersona)
         .replace('{location}', `${state.storyRooms[state.playerLocation].name} (${state.playerLocation})`)
         .replace('{inventory}', JSON.stringify(state.playerInventory || []))
         .replace('{objective}', activeMilestone?.description || 'Progress the story.')
-        .replace('{present_npcs}', presentNPCs)
+        .replace('{present_npcs}', presentNPCsText)
         .replace('{neighbors}', neighbors.map(n => `${n} (${state.storyRooms[n].name})`).join(', ') || 'none')
-        .replace('{next_step_hint}', nextStepHint);
+        .replace('{next_step_hint}', nextStepHint)
+        .replace('"tool_name": "travel" | "converse" | "wait" | "examine"', `"tool_name": ${allowedTools.map(t => `"${t}"`).join(' | ')}`);
 
     const prompt = `Decide your action for this turn.`;
     const res = await callOllama(prompt, systemPrompt);
