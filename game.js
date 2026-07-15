@@ -1,6 +1,6 @@
 import { TOOL_CALLING_PROMPT_TEMPLATE, GM_PROMPT_TEMPLATE, NPC_DIALOGUE_PROMPT_TEMPLATE } from './content.js';
 import { ENGINE_CONFIG } from './config.js';
-import { findPath, getNeighbors } from './pathfinding.js';
+import { findPath, getNeighbors, setConnections } from './pathfinding.js';
 import { callOllama, testOllamaConnection } from './ollama.js';
 import { updateActor, broadcastEvent, getFormattedMemories } from './actors.js';
 import { runDirector } from './director.js';
@@ -1302,6 +1302,7 @@ window.onload = () => {
         try {
             state = JSON.parse(saved);
             state.isWriting = false; // Always unlock inputs on refresh!
+            setConnections(state.storyConnections);
             
             // Migrate old serialized prompt templates in active localStorage
             if (state.actors && state.actors.bob && state.actors.bob.promptTemplate) {

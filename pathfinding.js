@@ -1,9 +1,19 @@
-import { CONNECTIONS } from './content.js';
+// --- PATHFINDING LAYER (SCENERY AGNOSTIC) ---
+
+let activeConnections = [];
+
+/**
+ * Updates the active connection graph nodes. Called by Story Manager or Game initialization.
+ * @param {Array} connections - Array of connection definitions ({from, to}).
+ */
+export function setConnections(connections) {
+    activeConnections = connections || [];
+}
 
 // Get neighbors of a room taking blocked connections into account
 export function getNeighbors(room, blockedConnections) {
     let neighbors = [];
-    for (let conn of CONNECTIONS) {
+    for (let conn of activeConnections) {
         let isBlocked = blockedConnections.includes(`${conn.from}-${conn.to}`) || 
                         blockedConnections.includes(`${conn.to}-${conn.from}`);
         if (isBlocked) continue;

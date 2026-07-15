@@ -1,6 +1,6 @@
-// --- STORY MANAGER & REGISTRY ---
 import { STORY_CONFIG as castleConfig } from './stories/castle.js';
 import { STORY_CONFIG as alchemistConfig } from './stories/alchemist.js';
+import { setConnections } from './pathfinding.js';
 
 export const STORY_REGISTRY = {
     castle: castleConfig,
@@ -22,6 +22,7 @@ export function loadStory(storyId, state) {
     // Core geometry and lore
     state.storyRooms = { ...config.rooms };
     state.storyConnections = [ ...config.connections ];
+    setConnections(state.storyConnections);
     state.loreDb = [ ...config.loreLedger ];
     
     // Objective DAG
