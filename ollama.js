@@ -52,6 +52,17 @@ export async function callOllama(prompt, systemInstruction = "") {
             if (dialogueMatch) {
                 return { dialogue: dialogueMatch[1].trim() };
             }
+
+            // Actor plan/thought fallback
+            const planMatch = rawText.match(/"plan"\s*:\s*\[([\s\S]*?)\]/);
+            const thoughtMatch = rawText.match(/"thought"\s*:\s*"([\s\S]*?)"/);
+            if (planMatch || thoughtMatch) {
+                const plan = planMatch 
+                    ? planMatch[1].split(',').map(s => s.replace(/["'\s]/g, '')).filter(Boolean)
+                    : [];
+                const thought = thoughtMatch ? thoughtMatch[1].trim() : "";
+                return { plan, thought, desires: {} };
+            }
             
             if (rawText.length > 20 && !rawText.includes("{")) {
                 return { paragraph: rawText };
