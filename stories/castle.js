@@ -82,6 +82,8 @@ export const STORY_CONFIG = {
                             status: "completed",
                             fallbackSpeech: "If you want to know what is going on, look for Bob the royal messenger. He's carrying a secret scroll of heavy import and heading to the Castle Gates. Go get it!",
                             actorSpeechId: "sly",
+                            prompt: `Formulate a short spoken dialogue (1-2 sentences) in-character as Sly the Thief sizing up the traveler ${state.playerName || "Leo"} in the Tavern. Tell them about Bob the royal messenger carrying a secret scroll to the Castle Gates. Suggest they check it out.`,
+                            systemPrompt: `You are Sly the Thief. Tell the traveler in the tavern about Bob carrying a secret scroll to the Castle Gates. Output EXACTLY this JSON: { "dialogue": "Your spoken dialogue here" }`,
                             msg: "STORY CONVERGENCE: Sly reveals that Bob is carrying a secret scroll and heading to the Castle Gates."
                         };
                     }
@@ -115,6 +117,8 @@ export const STORY_CONFIG = {
                             status: "completed",
                             fallbackSpeech: "Yes, I am Bob, the royal messenger. But we cannot speak of the scroll here—it is too dangerous. Follow me or meet me at the Castle Gates immediately.",
                             actorSpeechId: "bob",
+                            prompt: `Formulate a short spoken dialogue (1-2 sentences) in-character as Bob. Introduce yourself as Bob, the royal messenger. Warn them that it is too dangerous to speak here, and tell them to meet you at the Castle Gates immediately.`,
+                            systemPrompt: `You are Bob, the royal messenger. Introduce yourself to the player and tell them to meet you at the Castle Gates immediately. Output EXACTLY this JSON: { "dialogue": "Your spoken dialogue here" }`,
                             msg: "STORY CONVERGENCE: You verify Bob's identity as the royal messenger carrying the scroll."
                         };
                     }

@@ -826,22 +826,25 @@ Describe the specified target. Output EXACTLY this JSON: { "description": "Your 
                     if (state.isLLMActive) {
                         try {
                             const itemName = (activeMilestone.pressureConfig && activeMilestone.pressureConfig.keyItems && activeMilestone.pressureConfig.keyItems[0]) || "the item";
-                            let prompt = "";
-                            let systemPrompt = "";
+                            let prompt = convergenceCheck.prompt;
+                            let systemPrompt = convergenceCheck.systemPrompt;
                             
-                            if (actor.id === "bob") {
-                                if (!state.bobToldStory) {
-                                    prompt = `Formulate a short spoken dialogue (1-2 sentences) in-character where you (${actor.name}) hand over the ${itemName} to the Player at the Castle Gates. You MUST explain the background story: that the scroll warns of a surprise midnight attack on the Castle Keep by rebel forces, and they must take it to the Alchemist Shop to brew a revealing potion. Do NOT mention that they 'requested' or 'asked' for it.`;
-                                    systemPrompt = `You are ${actor.name}, the ${actor.role}. You are at the Castle Gates with the player. Hand them the ${itemName} and explain that it contains plans of a surprise midnight attack on the Keep by rebel forces, and they must take it to the Alchemist to brew a revealing potion. Output EXACTLY this JSON: { "dialogue": "Your spoken dialogue here" }`;
+                            if (!prompt) {
+                                if (actor.id === "bob") {
+                                    if (!state.bobToldStory) {
+                                        prompt = `Formulate a short spoken dialogue (1-2 sentences) in-character where you (${actor.name}) hand over the ${itemName} to the Player at the Castle Gates. You MUST explain the background story: that the scroll warns of a surprise midnight attack on the Castle Keep by rebel forces, and they must take it to the Alchemist Shop to brew a revealing potion. Do NOT mention that they 'requested' or 'asked' for it.`;
+                                        systemPrompt = `You are ${actor.name}, the ${actor.role}. You are at the Castle Gates with the player. Hand them the ${itemName} and explain that it contains plans of a surprise midnight attack on the Keep by rebel forces, and they must take it to the Alchemist to brew a revealing potion. Output EXACTLY this JSON: { "dialogue": "Your spoken dialogue here" }`;
+                                    } else {
+                                        prompt = `Formulate a short spoken dialogue (1-2 sentences) in-character where you (${actor.name}) hand over the ${itemName} to the Player for safekeeping, reminding them to take it to the Alchemist Shop. Mention that you've reached the Castle Gates. Do NOT mention that they 'requested' or 'asked' for it.`;
+                                        systemPrompt = `You are ${actor.name}, the ${actor.role}. You are at the Castle Gates with the player and are handing them the ${itemName} for safekeeping. Remind them to take it to the Alchemist. Output EXACTLY this JSON: { "dialogue": "Your spoken dialogue here" }`;
+                                    }
+                                    state.bobToldStory = true; // Mark as told upon handoff
                                 } else {
-                                    prompt = `Formulate a short spoken dialogue (1-2 sentences) in-character where you (${actor.name}) hand over the ${itemName} to the Player for safekeeping, reminding them to take it to the Alchemist Shop. Mention that you've reached the Castle Gates. Do NOT mention that they 'requested' or 'asked' for it.`;
-                                    systemPrompt = `You are ${actor.name}, the ${actor.role}. You are at the Castle Gates with the player and are handing them the ${itemName} for safekeeping. Remind them to take it to the Alchemist. Output EXACTLY this JSON: { "dialogue": "Your spoken dialogue here" }`;
+                                    prompt = `Formulate a short spoken dialogue (1-2 sentences) in-character where you (${actor.name}) hand over the ${itemName} to the Player. Mention that you've reached the Castle Gates.`;
+                                    systemPrompt = `You are ${actor.name}, the ${actor.role}. You are at the Castle Gates with the player and are handing them the ${itemName}. Output EXACTLY this JSON: { "dialogue": "Your spoken dialogue here" }`;
                                 }
-                                state.bobToldStory = true; // Mark as told upon handoff
-                            } else {
-                                prompt = `Formulate a short spoken dialogue (1-2 sentences) in-character where you (${actor.name}) hand over the ${itemName} to the Player. Mention that you've reached the Castle Gates.`;
-                                systemPrompt = `You are ${actor.name}, the ${actor.role}. You are at the Castle Gates with the player and are handing them the ${itemName}. Output EXACTLY this JSON: { "dialogue": "Your spoken dialogue here" }`;
                             }
+                            
                             const res = await callOllama(prompt, systemPrompt);
                             if (res && res.dialogue) {
                                 spoken = res.dialogue;
