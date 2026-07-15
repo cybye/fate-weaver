@@ -1,7 +1,7 @@
 import { DIRECTOR_PROFILE } from './director_actor.js';
-import { ROOMS, STORY_DAG, INITIAL_ACTORS } from './content.js';
 import { findPath, getNeighbors } from './pathfinding.js';
 import { callOllama } from './ollama.js';
+import { STORY_REGISTRY } from './storyManager.js';
 
 export async function runDirector(state, playerAction, logGame, logDirector, isLLMActive) {
     // Update dynamic critical objectives for all actors
@@ -11,12 +11,12 @@ export async function runDirector(state, playerAction, logGame, logDirector, isL
     if (!state.directorPlan) {
         state.directorPlan = {
             steps: [],
-            currentGoal: state.activeMilestoneId || STORY_DAG.startNode
+            currentGoal: state.activeMilestoneId || state.storyDag.startNodeId
         };
     }
 
     // 1. Always execute content-defined heuristics and events first
-    const activeMilestone = STORY_DAG.nodes[state.activeMilestoneId];
+    const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
     if (activeMilestone && typeof activeMilestone.heuristics === 'function') {
         activeMilestone.heuristics(state, logGame, logDirector);
     }
@@ -69,7 +69,7 @@ export async function runDirector(state, playerAction, logGame, logDirector, isL
 }
 
 function calculateNarrativePressure(state) {
-    const activeMilestone = STORY_DAG.nodes[state.activeMilestoneId];
+    const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
     if (!activeMilestone) return { pressure: 0, mode: "Passive Monitor" };
 
     const maxTurns = activeMilestone.maxTurns || 10;
@@ -141,12 +141,13 @@ function executeMutations(state, mutations, logGame, logDirector) {
                         };
                         
                         const spawned = state.actors[actorDef.id];
-                        if (INITIAL_ACTORS && INITIAL_ACTORS[spawned.id]) {
-                            spawned.heuristics = INITIAL_ACTORS[spawned.id].heuristics;
-                            spawned.subscriptions = INITIAL_ACTORS[spawned.id].subscriptions;
+                        const storySpec = STORY_REGISTRY[state.activeStoryId] || STORY_REGISTRY.castle;
+                        if (storySpec && storySpec.actors[spawned.id]) {
+                            spawned.heuristics = storySpec.actors[spawned.id].heuristics;
+                            spawned.subscriptions = storySpec.actors[spawned.id].subscriptions;
                         }
                         
-                        logDirector(`Mutation: Spawned dynamic actor ${actorDef.name} at ${ROOMS[spawned.location].name}`);
+                        logDirector(`Mutation: Spawned dynamic actor ${actorDef.name} at ${state.storyRooms[spawned.location].name}`);
                         logGame("system", `<i>${actorDef.name} has arrived in the world.</i>`);
                     } else {
                         logDirector(`Mutation: Spawn skipped. Actor limit reached (${currentActorCount}/6).`);
@@ -156,19 +157,19 @@ function executeMutations(state, mutations, logGame, logDirector) {
 
             case "move_actor":
                 const dest = mut.target;
-                if (dest && ROOMS[dest]) {
+                if (dest && state.storyRooms[dest]) {
                     if (mut.actorId === "player") {
                         state.playerLocation = dest;
-                        logDirector(`Mutation: Moved player to ${ROOMS[dest].name}`);
+                        logDirector(`Mutation: Moved player to ${state.storyRooms[dest].name}`);
                     } else {
                         const actor = state.actors[mut.actorId];
                         if (actor) {
                             actor.location = dest;
-                            logDirector(`Mutation: Moved ${actor.name} to ${ROOMS[dest].name}`);
+                            logDirector(`Mutation: Moved ${actor.name} to ${state.storyRooms[dest].name}`);
                             
                             if (state.followingActorId === mut.actorId) {
                                 state.playerLocation = dest;
-                                logGame("system", `<i>You follow ${actor.name} to the ${ROOMS[dest].name}.</i>`);
+                                logGame("system", `<i>You follow ${actor.name} to the ${state.storyRooms[dest].name}.</i>`);
                             }
                         }
                     }
@@ -222,7 +223,7 @@ async function runDirectorLLM(state, playerAction, logGame, logDirector, targetM
         `- ${a.name} (Role: ${a.role}) is at ${a.location}. Inventory: ${JSON.stringify(a.inventory)}.`
     ).join('\n');
 
-    const activeMilestone = STORY_DAG.nodes[state.activeMilestoneId];
+    const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
 
     // --- Build dynamic prompt values from live state ---
 
@@ -237,7 +238,7 @@ async function runDirectorLLM(state, playerAction, logGame, logDirector, targetM
         .join(' | ');
 
     // Valid target room options for move_actor mutations
-    const roomIds = Object.keys(ROOMS)
+    const roomIds = Object.keys(state.storyRooms)
         .map(k => `"${k}"`)
         .join(' | ');
 
@@ -309,7 +310,7 @@ export function updateCriticalObjectives(state) {
         state.actors[id].criticalObjective = null;
     }
 
-    const activeMilestone = STORY_DAG.nodes[state.activeMilestoneId];
+    const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
     if (activeMilestone && typeof activeMilestone.updateObjectives === 'function') {
         activeMilestone.updateObjectives(state);
     }

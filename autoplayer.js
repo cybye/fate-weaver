@@ -1,4 +1,4 @@
-import { ROOMS, STORY_DAG, AUTOPLAYER_PROMPT_TEMPLATE } from './content.js';
+import { AUTOPLAYER_PROMPT_TEMPLATE } from './content.js';
 import { findPath, getNeighbors } from './pathfinding.js';
 import { callOllama } from './ollama.js';
 
@@ -15,7 +15,7 @@ const DEFAULT_MAX_CONVERSATION_ROUNDS = 2;
  * @returns {Promise<{tool_name: string, arguments: object}>}
  */
 export async function runAutoPlayer(state, isLLMActive) {
-    const activeMilestone = STORY_DAG.nodes[state.activeMilestoneId];
+    const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
     const maxRounds = activeMilestone?.maxConversationRounds ?? DEFAULT_MAX_CONVERSATION_ROUNDS;
 
     // Reset all conversation state whenever the player moves to a new room
@@ -78,7 +78,7 @@ export async function runAutoPlayer(state, isLLMActive) {
 }
 
 function getEffectiveTargetRoom(state) {
-    const activeMilestone = STORY_DAG.nodes[state.activeMilestoneId];
+    const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
     if (!activeMilestone) return null;
 
     const targetRoom = activeMilestone.pressureConfig?.targetRoom;
@@ -101,7 +101,7 @@ function getEffectiveTargetRoom(state) {
 }
 
 async function runAutoPlayerLLM(state) {
-    const activeMilestone = STORY_DAG.nodes[state.activeMilestoneId];
+    const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
     const neighbors = getNeighbors(state.playerLocation, state.blockedConnections);
     const presentNPCs = Object.values(state.actors)
         .filter(a => a.location === state.playerLocation)
@@ -118,19 +118,19 @@ async function runAutoPlayerLLM(state) {
         const path = findPath(state.playerLocation, targetRoom, state.blockedConnections);
         if (path && path.length > 1) {
             const nextRoomId = path[1];
-            nextStepHint = `Go to ${ROOMS[nextRoomId].name} (${nextRoomId}) — this is the next step on the optimal path to your objective.`;
+            nextStepHint = `Go to ${state.storyRooms[nextRoomId].name} (${nextRoomId}) — this is the next step on the optimal path to your objective.`;
         }
     } else if (targetRoom && state.playerLocation === targetRoom) {
-        nextStepHint = `You are already at the objective location (${ROOMS[targetRoom].name}). Stay or interact.`;
+        nextStepHint = `You are already at the objective location (${state.storyRooms[targetRoom].name}). Stay or interact.`;
     }
 
     const systemPrompt = AUTOPLAYER_PROMPT_TEMPLATE
         .replace('{player_persona}', playerPersona)
-        .replace('{location}', `${ROOMS[state.playerLocation].name} (${state.playerLocation})`)
+        .replace('{location}', `${state.storyRooms[state.playerLocation].name} (${state.playerLocation})`)
         .replace('{inventory}', JSON.stringify(state.playerInventory || []))
         .replace('{objective}', activeMilestone?.description || 'Progress the story.')
         .replace('{present_npcs}', presentNPCs)
-        .replace('{neighbors}', neighbors.map(n => `${n} (${ROOMS[n].name})`).join(', ') || 'none')
+        .replace('{neighbors}', neighbors.map(n => `${n} (${state.storyRooms[n].name})`).join(', ') || 'none')
         .replace('{next_step_hint}', nextStepHint);
 
     const prompt = `Decide your action for this turn.`;
@@ -163,7 +163,7 @@ function runAutoPlayerHeuristic(state) {
 
     if (presentNPCs.length > 0 && !state._autoPlayerConversedThisPause) {
         // Prefer story-relevant (keyActors) NPCs over bystanders
-        const activeMilestone = STORY_DAG.nodes[state.activeMilestoneId];
+        const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
         const keyActors = activeMilestone?.pressureConfig?.keyActors || [];
         const priorityNPC = presentNPCs.find(a => keyActors.includes(a.id)) || presentNPCs[0];
 
@@ -180,7 +180,7 @@ function runAutoPlayerHeuristic(state) {
 // --- SHARED MOVE-OR-WAIT LOGIC ---
 
 function runMoveOrWait(state) {
-    const activeMilestone = STORY_DAG.nodes[state.activeMilestoneId];
+    const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
     const neighbors = getNeighbors(state.playerLocation, state.blockedConnections);
 
     // 1-in-3 chance: inject a wait turn for pacing / Director breathing room
@@ -220,7 +220,7 @@ function runMoveOrWait(state) {
  * @returns {object|null} The decision point definition, or null
  */
 export function checkDecisionPoints(state) {
-    const activeMilestone = STORY_DAG.nodes[state.activeMilestoneId];
+    const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
     if (!activeMilestone?.decisionPoints) return null;
 
     if (!state.decisionsLog) state.decisionsLog = {};

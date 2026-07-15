@@ -1,4 +1,4 @@
-import { ROOMS, CONNECTIONS, INITIAL_ACTORS, STORY_DAG, TOOL_CALLING_PROMPT_TEMPLATE, GM_PROMPT_TEMPLATE, NPC_DIALOGUE_PROMPT_TEMPLATE, LORE_LEDGER } from './content.js';
+import { TOOL_CALLING_PROMPT_TEMPLATE, GM_PROMPT_TEMPLATE, NPC_DIALOGUE_PROMPT_TEMPLATE } from './content.js';
 import { ENGINE_CONFIG } from './config.js';
 import { findPath, getNeighbors } from './pathfinding.js';
 import { callOllama, testOllamaConnection } from './ollama.js';
@@ -6,6 +6,7 @@ import { updateActor, broadcastEvent, getFormattedMemories } from './actors.js';
 import { runDirector } from './director.js';
 import { runWriter, typewriteText, toggleNarrator, isNarratorActive, speakText } from './writer.js';
 import { runAutoPlayer, checkDecisionPoints } from './autoplayer.js';
+import { loadStory, STORY_REGISTRY } from './storyManager.js';
 
 // --- WRITER LOG QUEUE ---
 let currentTurnLogs = [];
@@ -14,27 +15,11 @@ let currentTurnLogs = [];
 // --- GAME STATE ---
 let state = createInitialState();
 
-function cloneActors(actors) {
-    const clone = {};
-    for (let id in actors) {
-        const actor = actors[id];
-        clone[id] = {
-            ...actor,
-            desires: { ...actor.desires },
-            inventory: [...actor.inventory],
-            activePlan: [...actor.activePlan],
-            skills: { ...actor.skills },
-            memories: [...actor.memories]
-        };
-    }
-    return clone;
-}
-
 function createInitialState() {
-    return {
+    const initialState = {
         turn: 1,
         playerLocation: "tavern",
-        actors: cloneActors(INITIAL_ACTORS),
+        actors: {},
         blockedConnections: [],
         history: [],
         directorMode: "Passive Monitor",
@@ -44,7 +29,7 @@ function createInitialState() {
         playerLastActionText: "",
         activeConversationTarget: null,
         loreDb: [],
-        activeMilestoneId: STORY_DAG.startNode,
+        activeMilestoneId: "",
         milestoneStartTurn: 1,
         playerInventory: [],
         bobToldStory: false,
@@ -59,8 +44,14 @@ function createInitialState() {
         _autoPlayerLastLocation: null,
         _autoConversationTarget: null,
         _autoConversationRounds: 0,
-        _autoPlayTimeoutId: null
+        _autoPlayTimeoutId: null,
+        activeStoryId: "castle",
+        storyRooms: {},
+        storyConnections: [],
+        storyDag: { nodes: {} }
     };
+    loadStory("castle", initialState);
+    return initialState;
 }
 
 // --- LOGGING ---
@@ -197,7 +188,7 @@ async function runToolCallingParserLLM(playerInput) {
         : "None";
 
     const system = TOOL_CALLING_PROMPT_TEMPLATE
-        .replace("{current_room}", `${ROOMS[state.playerLocation].name} (${state.playerLocation})`)
+        .replace("{current_room}", `${state.storyRooms[state.playerLocation].name} (${state.playerLocation})`)
         .replace("{active_conversation_target}", targetText)
         .replace("{tools_schema}", JSON.stringify(tools, null, 2))
         .replace("{player_input}", playerInput);
@@ -216,10 +207,10 @@ async function runToolCallingParserLLM(playerInput) {
 }
 
 function getLocalDescription(state) {
-    let desc = ROOMS[state.playerLocation].desc;
+    let desc = state.storyRooms[state.playerLocation].desc;
     
     let neighbors = getNeighbors(state.playerLocation, state.blockedConnections);
-    let exitsDesc = neighbors.map(n => ROOMS[n].name).join(", ");
+    let exitsDesc = neighbors.map(n => state.storyRooms[n].name).join(", ");
     desc += `<br><br>Exits lead to: ${exitsDesc || "nowhere (blocked)"}.`;
 
     let present = Object.values(state.actors).filter(a => a.location === state.playerLocation);
@@ -233,16 +224,23 @@ function getLocalDescription(state) {
 // --- NPC DYNAMIC DIALOGUE GENERATOR ---
 async function generateNPCDialogueLLM(actor, playerSpeech) {
     const memoriesDesc = getFormattedMemories(actor, state.turn);
-    const worldLore = LORE_LEDGER.concat(state.loreDb).join('\n');
+    const worldLore = state.loreDb.join('\n');
     
+    const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
+    let storyDialogueConstraint = "";
+    if (activeMilestone && activeMilestone.dialogueConstraints && activeMilestone.dialogueConstraints[actor.id]) {
+        storyDialogueConstraint = `Story Mission Constraint:\n${activeMilestone.dialogueConstraints[actor.id]}`;
+    }
+
     const system = NPC_DIALOGUE_PROMPT_TEMPLATE
         .replace("{name}", actor.name)
         .replace("{role_desc}", actor.role)
-        .replace("{location}", ROOMS[actor.location].name)
+        .replace("{location}", state.storyRooms[actor.location].name)
         .replace("{inventory}", JSON.stringify(actor.inventory))
         .replace("{memories}", memoriesDesc)
         .replace("{world_lore}", worldLore)
-        .replace("{player_speech}", playerSpeech);
+        .replace("{player_speech}", playerSpeech)
+        .replace("{story_dialogue_constraint}", storyDialogueConstraint);
 
     const prompt = `Formulate in-character reply to player: "${playerSpeech}"`;
 
@@ -255,8 +253,7 @@ async function generateNPCDialogueLLM(actor, playerSpeech) {
             res.new_assertions.forEach(assertion => {
                 const cleanAssert = assertion.trim();
                 if (cleanAssert && cleanAssert.length > 5) {
-                    const isDuplicate = LORE_LEDGER.some(l => l.toLowerCase() === cleanAssert.toLowerCase()) ||
-                                        state.loreDb.some(l => l.toLowerCase() === cleanAssert.toLowerCase());
+                    const isDuplicate = state.loreDb.some(l => l.toLowerCase() === cleanAssert.toLowerCase());
                     if (!isDuplicate) {
                         state.loreDb.push(cleanAssert);
                         logGame("system", `<i>[System Fact Established: "${cleanAssert}"]</i>`);
@@ -284,19 +281,18 @@ async function generateNPCDialogueLLM(actor, playerSpeech) {
 
 // --- GAME MASTER LLM ---
 async function runGameMasterLLM(playerAction) {
-    const isBob = state.actors.bob.location === state.playerLocation ? "Yes" : "No";
-    const isSly = state.actors.sly.location === state.playerLocation ? "Yes" : "No";
-    const isGuard = (state.actors.guard && state.actors.guard.location === state.playerLocation) ? "Yes" : "No";
-    const activeNudge = state.nudges[0] || "None";
+    const actorPresenceList = Object.values(state.actors).map(actor => {
+        const isPresent = actor.location === state.playerLocation ? "Yes" : "No";
+        return `- ${actor.name} is in the room: ${isPresent}`;
+    }).join('\n');
 
-    const worldLore = LORE_LEDGER.concat(state.loreDb).join('\n');
+    const activeNudge = state.nudges[0] || "None";
+    const worldLore = state.loreDb.join('\n');
     const system = GM_PROMPT_TEMPLATE
         .replace("{world_lore}", worldLore)
-        .replace("{room_name}", ROOMS[state.playerLocation].name)
-        .replace("{room_desc}", ROOMS[state.playerLocation].desc)
-        .replace("{is_bob_here}", isBob)
-        .replace("{is_sly_here}", isSly)
-        .replace("{is_guard_here}", isGuard)
+        .replace("{room_name}", state.storyRooms[state.playerLocation].name)
+        .replace("{room_desc}", state.storyRooms[state.playerLocation].desc)
+        .replace("{actor_presence_list}", actorPresenceList)
         .replace("{nudge}", activeNudge);
 
     const prompt = `Action performed: "${playerAction}"`;
@@ -400,7 +396,7 @@ async function tickGame(playerInput) {
     let playerLogText = playerAction;
     if (playerAction.startsWith("go_")) {
         const dest = playerAction.split("_")[1];
-        playerLogText = `go to ${ROOMS[dest]?.name || dest}`;
+        playerLogText = `go to ${state.storyRooms[dest]?.name || dest}`;
     } else if (playerAction === "wait") {
         playerLogText = "wait";
     }
@@ -441,9 +437,10 @@ async function tickGame(playerInput) {
             } else if (input.startsWith("follow")) {
                 const namePart = input.substring(6).trim();
                 let targetId = null;
-                if (namePart.includes("bob")) targetId = "bob";
-                else if (namePart.includes("sly")) targetId = "sly";
-                else if (namePart.includes("guard")) targetId = "guard";
+                // Dynamically resolve target from active characters
+                Object.values(state.actors).forEach(a => {
+                    if (namePart.includes(a.name.toLowerCase())) targetId = a.id;
+                });
                 
                 if (targetId) {
                     toolCall = { tool_name: "follow", arguments: { character_id: targetId } };
@@ -464,8 +461,7 @@ async function tickGame(playerInput) {
                 }
             } else {
                 let target = null;
-                const rooms = ["tavern", "square", "alchemist", "gates"];
-                rooms.forEach(r => { if (input.includes(r)) target = r; });
+                Object.keys(state.storyRooms).forEach(r => { if (input.includes(r)) target = r; });
                 if (target) {
                     toolCall = { tool_name: "travel", arguments: { destination: target } };
                 } else {
@@ -545,13 +541,11 @@ async function tickGame(playerInput) {
         }
         await finalizeAction();
         return; // Non-ticking turn
-    }
-
-    if (toolCall.tool_name === "look") {
+     if (toolCall.tool_name === "look") {
         if (state.isLLMActive) {
             await runGameMasterLLM("looked around the room");
         } else {
-            logGame("system", ROOMS[state.playerLocation].desc);
+            logGame("system", state.storyRooms[state.playerLocation].desc);
         }
         await finalizeAction();
         return; // Non-ticking turn
@@ -565,10 +559,7 @@ async function tickGame(playerInput) {
             if (state.isLLMActive) {
                 spokenReply = await generateNPCDialogueLLM(actor, playerAction);
             } else {
-                if (actor.id === "bob") spokenReply = "Keep moving toward the gates!";
-                else if (actor.id === "sly") spokenReply = "Watch your pockets, traveler.";
-                else if (actor.id === "guard") spokenReply = "Move along, citizen. I am on patrol.";
-                else spokenReply = "I have nothing to say.";
+                spokenReply = actor.fallbackReply || "I have nothing to say.";
             }
 
             logGame("system", `<b>${actor.name} says:</b> "${spokenReply}"`);
@@ -604,13 +595,13 @@ async function tickGame(playerInput) {
         let desc = "";
         if (state.isLLMActive) {
             try {
-                const worldLore = LORE_LEDGER.concat(state.loreDb || []).join('\n');
-                const prompt = `Describe the '${target}' present in the current room (${ROOMS[state.playerLocation].name}) or in the player's inventory. Use the World Lore facts to make the description rich and consistent with established canon. Use 2-3 descriptive sentences.`;
+                const worldLore = state.loreDb.join('\n');
+                const prompt = `Describe the '${target}' present in the current room (${state.storyRooms[state.playerLocation].name}) or in the player's inventory. Use the World Lore facts to make the description rich and consistent with established canon. Use 2-3 descriptive sentences.`;
                 const systemPrompt = `You are the Game Master with full world knowledge.
 Established World Lore:
 ${worldLore}
 
-Current Room: ${ROOMS[state.playerLocation].name}
+Current Room: ${state.storyRooms[state.playerLocation].name}
 Player Inventory: ${JSON.stringify(state.playerInventory)}
 Present characters: ${Object.values(state.actors).filter(a => a.location === state.playerLocation).map(a => a.name).join(', ')}
 
@@ -668,7 +659,7 @@ Describe the specified target. Output EXACTLY this JSON: { "description": "Your 
         let neighbors = getNeighbors(state.playerLocation, state.blockedConnections);
         
         if (state.playerLocation === dest) {
-            logGame("system", `You look around; you are already at the ${ROOMS[dest].name}.`);
+            logGame("system", `You look around; you are already at the ${state.storyRooms[dest].name}.`);
             await finalizeAction();
             return;
         } else if (neighbors.includes(dest)) {
@@ -679,13 +670,13 @@ Describe the specified target. Output EXACTLY this JSON: { "description": "Your 
             }
             const oldLoc = state.playerLocation;
             state.playerLocation = dest;
-            actualActionText = `travel to ${ROOMS[dest].name}`;
+            actualActionText = `travel to ${state.storyRooms[dest].name}`;
             state.activeConversationTarget = null; // Reset target on player movement
 
             // Broadcast travel event (Importance 4)
             broadcastEvent(state, {
                 type: "travel",
-                description: `Player traveled to the ${ROOMS[dest].name}.`,
+                description: `Player traveled to the ${state.storyRooms[dest].name}.`,
                 location: "global",
                 importance: 4,
                 originActorId: "player"
@@ -698,25 +689,25 @@ Describe the specified target. Output EXACTLY this JSON: { "description": "Your 
                 payload: { actorId: "player" }
             }, logGame, logDirector);
         } else {
-            let directConnection = CONNECTIONS.some(conn => 
+            let directConnection = state.storyConnections.some(conn => 
                 (conn.from === state.playerLocation && conn.to === dest) ||
                 (conn.to === state.playerLocation && conn.from === dest)
             );
             if (directConnection) {
-                logGame("system", `You attempt to head to the ${ROOMS[dest].name}, but that path is currently blocked.`);
+                logGame("system", `You attempt to head to the ${state.storyRooms[dest].name}, but that path is currently blocked.`);
             } else {
-                logGame("system", `You can't get to the ${ROOMS[dest].name} directly from here.`);
+                logGame("system", `You can't get to the ${state.storyRooms[dest].name} directly from here.`);
             }
             await finalizeAction();
             return;
         }
     } else {
-        actualActionText = `waited in the ${ROOMS[state.playerLocation].name}`;
+        actualActionText = `waited in the ${state.storyRooms[state.playerLocation].name}`;
 
         // Broadcast wait event (Importance 2)
         broadcastEvent(state, {
             type: "wait",
-            description: `Player waited in the ${ROOMS[state.playerLocation].name}.`,
+            description: `Player waited in the ${state.storyRooms[state.playerLocation].name}.`,
             location: state.playerLocation,
             importance: 2,
             originActorId: "player"
@@ -745,7 +736,7 @@ Describe the specified target. Output EXACTLY this JSON: { "description": "Your 
         if (followedActor && state.playerLocation !== followedActor.location) {
             const dest = followedActor.location;
             state.playerLocation = dest;
-            logGame("system", `<i>You follow ${followedActor.name} to the ${ROOMS[dest].name}.</i>`);
+            logGame("system", `<i>You follow ${followedActor.name} to the ${state.storyRooms[dest].name}.</i>`);
         }
     }
 
@@ -756,8 +747,8 @@ Describe the specified target. Output EXACTLY this JSON: { "description": "Your 
         logGame("system", getLocalDescription(state));
     }
 
-    // 5. Assert Narrative Convergence Goal (defined in content.js STORY_DAG)
-    const activeMilestone = STORY_DAG.nodes[state.activeMilestoneId];
+    // 5. Assert Narrative Convergence Goal (defined in active story config)
+    const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
     const convergenceCheck = activeMilestone ? activeMilestone.checkConvergence(state) : null;
     
     if (convergenceCheck) {
@@ -816,7 +807,7 @@ Describe the specified target. Output EXACTLY this JSON: { "description": "Your 
                 // Transition to the next milestone in the DAG
                 state.activeMilestoneId = activeMilestone.nextNodes[0];
                 state.milestoneStartTurn = state.turn;
-                const nextMilestone = STORY_DAG.nodes[state.activeMilestoneId];
+                const nextMilestone = state.storyDag.nodes[state.activeMilestoneId];
                 logGame("event", convergenceCheck.msg);
                 logGame("director-announce", `<b>STORY ADVANCEMENT:</b> New Objective: ${nextMilestone.description}`);
                 logDirector(`STORY ADVANCEMENT: Active objective is now: ${nextMilestone.title}`);
@@ -825,7 +816,7 @@ Describe the specified target. Output EXACTLY this JSON: { "description": "Your 
                 document.getElementById("target-state-badge").textContent = "Completed";
                 document.getElementById("target-state-badge").className = "stat-value success";
                 logGame("event", convergenceCheck.msg);
-                logGame("event", "<b>STORY COMPLETE:</b> You have successfully saved the castle! The end.");
+                logGame("event", "<b>STORY COMPLETE:</b> You have successfully completed the chapter!");
                 logDirector("SUCCESS: Story DAG fully traversed.");
             }
         } else if (convergenceCheck.status === "pending") {
@@ -888,7 +879,7 @@ Describe the specified target. Output EXACTLY this JSON: { "description": "Your 
         const targetRoom = activeMilestone.pressureConfig.targetRoom;
         let path = findPath(state.playerLocation, targetRoom, state.blockedConnections);
         let distance = path ? path.length - 1 : ENGINE_CONFIG.actorDistanceAlert;
-        document.getElementById("actor-distance").textContent = `${distance} Room(s) to ${ROOMS[targetRoom].name}`;
+        document.getElementById("actor-distance").textContent = `${distance} Room(s) to ${state.storyRooms[targetRoom].name}`;
     } else {
         document.getElementById("actor-distance").textContent = "N/A";
     }
@@ -911,9 +902,9 @@ function initMap() {
     const connectionsContainer = document.getElementById("map-connections");
     connectionsContainer.innerHTML = "";
 
-    CONNECTIONS.forEach(conn => {
-        const fromNode = ROOMS[conn.from];
-        const toNode = ROOMS[conn.to];
+    state.storyConnections.forEach(conn => {
+        const fromNode = state.storyRooms[conn.from];
+        const toNode = state.storyRooms[conn.to];
 
         const line = document.createElement("div");
         line.className = "connection-line";
@@ -935,8 +926,8 @@ function initMap() {
     const nodesContainer = document.getElementById("map-nodes");
     nodesContainer.innerHTML = "";
 
-    for (let key in ROOMS) {
-        const room = ROOMS[key];
+    for (let key in state.storyRooms) {
+        const room = state.storyRooms[key];
         const node = document.createElement("div");
         node.className = "room-node";
         node.id = `node-${key}`;
@@ -973,21 +964,23 @@ function saveState() {
 }
 
 function restoreActorFunctions(actors) {
+    const config = STORY_REGISTRY[state.activeStoryId] || STORY_REGISTRY.castle;
     for (let id in actors) {
-        if (INITIAL_ACTORS[id]) {
-            actors[id].heuristics = INITIAL_ACTORS[id].heuristics;
-            actors[id].subscriptions = INITIAL_ACTORS[id].subscriptions;
+        if (config.actors[id]) {
+            actors[id].heuristics = config.actors[id].heuristics;
+            actors[id].subscriptions = config.actors[id].subscriptions;
         }
     }
 }
 
 function updateUI() {
-    for (let key in ROOMS) {
+    for (let key in state.storyRooms) {
         const node = document.getElementById(`node-${key}`);
-        node.className = "room-node";
-        
-        if (state.playerLocation === key) {
-            node.classList.add("active-room");
+        if (node) {
+            node.className = "room-node";
+            if (state.playerLocation === key) {
+                node.classList.add("active-room");
+            }
         }
     }
 
@@ -997,7 +990,7 @@ function updateUI() {
     }
 
     // Sync active milestone details
-    const activeMilestone = STORY_DAG.nodes[state.activeMilestoneId];
+    const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
     if (activeMilestone && document.getElementById("active-milestone-title")) {
         document.getElementById("active-milestone-title").textContent = activeMilestone.title;
         document.getElementById("active-milestone-desc").textContent = activeMilestone.description;
@@ -1012,14 +1005,14 @@ function updateUI() {
     // Sync milestone list
     if (document.getElementById("story-milestones-list")) {
         const completedMilestones = [];
-        let curr = STORY_DAG.startNode;
+        let curr = state.storyDag.startNodeId;
         while (curr && curr !== state.activeMilestoneId) {
             completedMilestones.push(curr);
-            const node = STORY_DAG.nodes[curr];
+            const node = state.storyDag.nodes[curr];
             curr = node.nextNodes && node.nextNodes[0];
         }
 
-        document.getElementById("story-milestones-list").innerHTML = Object.values(STORY_DAG.nodes).map(m => {
+        document.getElementById("story-milestones-list").innerHTML = Object.values(state.storyDag.nodes).map(m => {
             let statusClass = "locked";
             let statusLabel = "Locked";
             if (state.activeMilestoneId === m.id) {
@@ -1071,40 +1064,44 @@ function updateUI() {
         }).join('');
     }
 
-    CONNECTIONS.forEach(conn => {
+    state.storyConnections.forEach(conn => {
         const line = document.getElementById(`line-${conn.from}-${conn.to}`);
-        const isBlocked = state.blockedConnections.includes(`${conn.from}-${conn.to}`) || 
-                          state.blockedConnections.includes(`${conn.to}-${conn.from}`);
-        if (isBlocked) {
-            line.classList.add("blocked");
-        } else {
-            line.classList.remove("blocked");
+        if (line) {
+            const isBlocked = state.blockedConnections.includes(`${conn.from}-${conn.to}`) || 
+                              state.blockedConnections.includes(`${conn.to}-${conn.from}`);
+            if (isBlocked) {
+                line.classList.add("blocked");
+            } else {
+                line.classList.remove("blocked");
+            }
         }
     });
 
     // Render dots dynamically for ALL actors configured in state
-    for (let key in ROOMS) {
+    for (let key in state.storyRooms) {
         const dotsContainer = document.getElementById(`dots-${key}`);
-        dotsContainer.innerHTML = "";
+        if (dotsContainer) {
+            dotsContainer.innerHTML = "";
 
-        if (state.playerLocation === key) {
-            const playerDot = document.createElement("div");
-            playerDot.className = "dot player-dot";
-            playerDot.setAttribute("data-tooltip", "You");
-            dotsContainer.appendChild(playerDot);
-        }
-
-        Object.values(state.actors).forEach(actor => {
-            if (actor.location === key) {
-                const npcDot = document.createElement("div");
-                npcDot.className = "dot";
-                npcDot.style.backgroundColor = actor.color;
-                npcDot.style.boxShadow = `0 0 8px ${actor.color}`;
-                const invText = actor.inventory && actor.inventory.length > 0 ? ` [Inv: ${actor.inventory.join(', ')}]` : '';
-                npcDot.setAttribute("data-tooltip", `${actor.name} (${actor.role})${invText}`);
-                dotsContainer.appendChild(npcDot);
+            if (state.playerLocation === key) {
+                const playerDot = document.createElement("div");
+                playerDot.className = "dot player-dot";
+                playerDot.setAttribute("data-tooltip", "You");
+                dotsContainer.appendChild(playerDot);
             }
-        });
+
+            Object.values(state.actors).forEach(actor => {
+                if (actor.location === key) {
+                    const npcDot = document.createElement("div");
+                    npcDot.className = "dot";
+                    npcDot.style.backgroundColor = actor.color;
+                    npcDot.style.boxShadow = `0 0 8px ${actor.color}`;
+                    const invText = actor.inventory && actor.inventory.length > 0 ? ` [Inv: ${actor.inventory.join(', ')}]` : '';
+                    npcDot.setAttribute("data-tooltip", `${actor.name} (${actor.role})${invText}`);
+                    dotsContainer.appendChild(npcDot);
+                }
+            });
+        }
     }
 
     const buttonsContainer = document.getElementById("action-buttons");
@@ -1115,12 +1112,12 @@ function updateUI() {
         inputEl.disabled = state.isWriting;
     }
 
-    if (state.storyState === "pending") {
+    if (state.storyState === "pending" || state.storyState === "running") {
         let neighbors = getNeighbors(state.playerLocation, state.blockedConnections);
         neighbors.forEach(neighbor => {
             const btn = document.createElement("button");
             btn.className = "btn";
-            btn.textContent = `Go to ${ROOMS[neighbor].name}`;
+            btn.textContent = `Go to ${state.storyRooms[neighbor].name}`;
             btn.disabled = state.isWriting;
             btn.onclick = () => tickGame(`go_${neighbor}`);
             buttonsContainer.appendChild(btn);
@@ -1149,7 +1146,11 @@ async function restartGame() {
     } catch (err) {
         console.warn("Failed to clear localStorage:", err);
     }
+    const selectedStoryId = document.getElementById("story-select")?.value || state.activeStoryId || "castle";
+    const oldPlayerName = state.playerName;
     state = createInitialState();
+    state.playerName = oldPlayerName; // Preserve name across resets/story swaps!
+    loadStory(selectedStoryId, state);
     state.isWriting = true; // Block inputs during intro writing!
 
     document.getElementById("turn-counter").textContent = state.turn;
@@ -1167,8 +1168,8 @@ async function restartGame() {
     currentTurnLogs = [];
 
     logGame("system", "<b>--- SIMULATION INITIALIZED ---</b>");
-    logGame("system", `Goal: ${STORY_DAG.nodes[state.activeMilestoneId].description}`);
-    logGame("system", ROOMS[state.playerLocation].desc);
+    logGame("system", `Goal: ${state.storyDag.nodes[state.activeMilestoneId].description}`);
+    logGame("system", state.storyRooms[state.playerLocation].desc);
     
     initMap();
     updateUI();
@@ -1361,6 +1362,11 @@ window.onload = () => {
                 nudgesContainer.innerHTML = state.nudges.map(n => `<div class="nudge-entry">${n}</div>`).join('');
             }
 
+            const storySelect = document.getElementById("story-select");
+            if (storySelect) {
+                storySelect.value = state.activeStoryId || "castle";
+            }
+
             document.getElementById("turn-counter").textContent = state.turn;
             initMap();
             updateUI();
@@ -1373,10 +1379,18 @@ window.onload = () => {
         restartGame();
     }
     
+    const storySelect = document.getElementById("story-select");
+    if (storySelect) {
+        storySelect.addEventListener("change", () => {
+            restartGame();
+        });
+    }
+
     document.getElementById("command-form").addEventListener("submit", handleCommandInput);
     initCollapsiblePanels();
     initNarratorToggle();
     initAutoPlayControls();
+    window.restartGame = restartGame;
 };
 
 // --- AUTOPLAY UI ---

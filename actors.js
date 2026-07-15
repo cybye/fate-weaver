@@ -1,4 +1,3 @@
-import { ROOMS, LORE_LEDGER } from './content.js';
 import { findPath, getNeighbors } from './pathfinding.js';
 import { callOllama } from './ollama.js';
 import { publishEvent } from './game.js';
@@ -194,17 +193,17 @@ export async function updateActor(actorId, state, logGame, logDirector, isLLMAct
             
             if (state.followingActorId === actorId) {
                 state.playerLocation = dest;
-                logGame("system", `You follow ${actorDef.name} to the ${ROOMS[dest].name}.`);
+                logGame("system", `You follow ${actorDef.name} to the ${state.storyRooms[dest].name}.`);
             }
             
             broadcastEvent(state, {
                 type: "travel",
-                description: `${actorDef.name} traveled to the ${ROOMS[dest].name}.`,
+                description: `${actorDef.name} traveled to the ${state.storyRooms[dest].name}.`,
                 location: "global",
                 importance: 4,
                 originActorId: actorDef.id
             }, logGame);
-            logGame("npc", `<i>[Plan Execution] ${actorDef.name} moves to the ${ROOMS[dest].name}. (Remaining steps: ${actorDef.activePlan.join(" -> ") || "None"})</i>`);
+            logGame("npc", `<i>[Plan Execution] ${actorDef.name} moves to the ${state.storyRooms[dest].name}. (Remaining steps: ${actorDef.activePlan.join(" -> ") || "None"})</i>`);
             
             // Publish actor_entered event for Pub/Sub
             publishEvent(state, {
@@ -213,7 +212,7 @@ export async function updateActor(actorId, state, logGame, logDirector, isLLMAct
                 payload: { actorId: actorDef.id }
             }, logGame, logDirector);
         } else {
-            logGame("npc", `<i>[Plan Execution] ${actorDef.name} stays at the ${ROOMS[actorDef.location].name}.</i>`);
+            logGame("npc", `<i>[Plan Execution] ${actorDef.name} stays at the ${state.storyRooms[actorDef.location].name}.</i>`);
         }
         return;
     } else {
@@ -254,7 +253,7 @@ export async function updateActor(actorId, state, logGame, logDirector, isLLMAct
         if (actorDef.location !== oldLoc) {
             broadcastEvent(state, {
                 type: "travel",
-                description: `${actorDef.name} traveled to the ${ROOMS[actorDef.location].name}.`,
+                description: `${actorDef.name} traveled to the ${state.storyRooms[actorDef.location].name}.`,
                 location: "global",
                 importance: 4,
                 originActorId: actorDef.id
@@ -297,7 +296,7 @@ async function runActorLLM(actorId, state, logGame, logDirector) {
     const neighbors = getNeighbors(actor.location, state.blockedConnections);
 
     // Format prompt template with dynamic context including formatted memories
-    const worldLore = LORE_LEDGER.concat(state.loreDb || []).join('\n');
+    const worldLore = (state.loreDb || []).join('\n');
     
     // Replace all desire weights dynamically in prompt template
     let systemPrompt = actor.promptTemplate;
@@ -329,9 +328,9 @@ async function runActorLLM(actorId, state, logGame, logDirector) {
     // Determine player visibility (Perception >= Player Stealth of 3)
     let visiblePlayerLoc = "Unknown";
     if (isPlayerHere) {
-        visiblePlayerLoc = ROOMS[state.playerLocation].name;
+        visiblePlayerLoc = state.storyRooms[state.playerLocation].name;
     } else if (isPlayerAdjacent && actorPerception >= 3) {
-        visiblePlayerLoc = ROOMS[state.playerLocation].name;
+        visiblePlayerLoc = state.storyRooms[state.playerLocation].name;
     }
 
     const playerText = isPlayerHere 
@@ -353,9 +352,9 @@ async function runActorLLM(actorId, state, logGame, logDirector) {
                 const actorName = match[1];
                 const roomName = match[2];
                 // Resolve roomName back to roomKey
-                for (let key in ROOMS) {
-                    if (ROOMS[key].name === roomName) {
-                        lastKnownLocations[actorName] = ROOMS[key].name;
+                for (let key in state.storyRooms) {
+                    if (state.storyRooms[key].name === roomName) {
+                        lastKnownLocations[actorName] = state.storyRooms[key].name;
                         break;
                     }
                 }
@@ -373,9 +372,9 @@ async function runActorLLM(actorId, state, logGame, logDirector) {
             
             let visibleLoc = "Unknown";
             if (isHere) {
-                visibleLoc = ROOMS[a.location].name;
+                visibleLoc = state.storyRooms[a.location].name;
             } else if (isAdj && actorPerception >= targetStealth) {
-                visibleLoc = ROOMS[a.location].name;
+                visibleLoc = state.storyRooms[a.location].name;
             } else if (lastKnownLocations[a.name] && actorPerception >= Math.max(1, targetStealth - 2)) {
                 visibleLoc = `${lastKnownLocations[a.name]} (last seen traveling here)`;
             }
@@ -541,7 +540,7 @@ Decide your action.`;
         }
         
         // Ensure endTarget is valid room key
-        if (!ROOMS[endTarget]) {
+        if (!state.storyRooms[endTarget]) {
             endTarget = actor.location;
         }
 
@@ -574,16 +573,16 @@ Decide your action.`;
                 
                 if (state.followingActorId === actor.id) {
                     state.playerLocation = dest;
-                    logGame("system", `You follow ${actor.name} to the ${ROOMS[dest].name}.`);
+                    logGame("system", `You follow ${actor.name} to the ${state.storyRooms[dest].name}.`);
                 }
                 broadcastEvent(state, {
                     type: "travel",
-                    description: `${actor.name} traveled to the ${ROOMS[dest].name}.`,
+                    description: `${actor.name} traveled to the ${state.storyRooms[dest].name}.`,
                     location: "global",
                     importance: 4,
                     originActorId: actor.id
                 }, logGame);
-                logGame("npc", `<i>[Plan Execution] ${actor.name} moves to the ${ROOMS[dest].name}. (Remaining steps: ${actor.activePlan.join(" -> ") || "None"})</i>`);
+                logGame("npc", `<i>[Plan Execution] ${actor.name} moves to the ${state.storyRooms[dest].name}. (Remaining steps: ${actor.activePlan.join(" -> ") || "None"})</i>`);
                 
                 // Publish actor_entered event for Pub/Sub
                 publishEvent(state, {
@@ -595,9 +594,9 @@ Decide your action.`;
                 logGame("npc", `${actor.name} wanted to go to ${dest} but got lost and stayed.`);
             }
         } else {
-            logGame("npc", `<i>[Plan Execution] ${actor.name} stays at the ${ROOMS[actor.location].name}.</i>`);
+            logGame("npc", `<i>[Plan Execution] ${actor.name} stays at the ${state.storyRooms[actor.location].name}.</i>`);
         }
     } else {
-        logGame("npc", `${actor.name} resides at the ${ROOMS[actor.location].name}.`);
+        logGame("npc", `${actor.name} resides at the ${state.storyRooms[actor.location].name}.`);
     }
 }
