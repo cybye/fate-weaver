@@ -31,15 +31,15 @@ export const STORY_CONFIG = {
     ],
 
     storyDag: {
-        startNodeId: "get_scroll",
+        startNodeId: "seek_rumors",
         nodes: {
-            get_scroll: {
-                id: "get_scroll",
-                title: "Obtain the Secret Scroll",
-                description: "Meet Bob at the Castle Gates to receive the Secret Scroll before turn 10.",
-                maxTurns: 10,
-                playerPersona: "a wary but curious traveler who has just arrived in town and is eager to find out what's going on. You ask questions before acting, and trust your instincts about people.",
-                maxConversationRounds: 3,
+            seek_rumors: {
+                id: "seek_rumors",
+                title: "Seek Shelter and Rumors",
+                description: "Rest in the Tavern and talk to the locals to gather rumors.",
+                maxTurns: 5,
+                playerPersona: "a traveler seeking warm shelter from the storm. You don't know anything about any scroll or messenger yet; you are just looking for a friendly face or a rumor in the Tavern.",
+                maxConversationRounds: 2,
                 decisionPoints: [
                     {
                         id: "sly_ask_name",
@@ -65,7 +65,41 @@ export const STORY_CONFIG = {
                                 consequence: "\"A quiet one, then. Suit yourself,\" Sly shrugs, shifting back into the dark."
                             }
                         ]
-                    },
+                    }
+                ],
+                updateObjectives: (state) => {
+                    if (state.actors.bob) {
+                        state.actors.bob.criticalObjective = "Travel to the Alchemist Shop (alchemist) to deliver your report.";
+                    }
+                    if (state.actors.sly) {
+                        state.actors.sly.criticalObjective = "Gather rumors at the Tavern (tavern). Size up the new traveler.";
+                    }
+                },
+                convergenceCheck: (state) => {
+                    const spokeToSly = state.activeConversationTarget === "sly" || (state.decisionsLog && state.decisionsLog.sly_ask_name);
+                    if (spokeToSly) {
+                        return {
+                            status: "completed",
+                            fallbackSpeech: "If you want to know what is going on, look for Bob the royal messenger. He's carrying a secret scroll of heavy import and heading to the Castle Gates. Go get it!",
+                            actorSpeechId: "sly",
+                            msg: "STORY CONVERGENCE: Sly reveals that Bob is carrying a secret scroll and heading to the Castle Gates."
+                        };
+                    }
+                    return { status: "running" };
+                },
+                nextNodes: ["get_scroll"],
+                dialogueConstraints: {
+                    sly: "Tell the player about a royal messenger named Bob who is carrying a secret scroll to the Castle Gates. Suggest they go get it."
+                }
+            },
+            get_scroll: {
+                id: "get_scroll",
+                title: "Obtain the Secret Scroll",
+                description: "Meet Bob at the Castle Gates to receive the Secret Scroll before turn 10.",
+                maxTurns: 10,
+                playerPersona: "a wary but curious traveler who has just learned about Bob and the Secret Scroll. You are heading to the Castle Gates to meet him.",
+                maxConversationRounds: 3,
+                decisionPoints: [
                     {
                         id: "trust_sly_early",
                         condition: (state) =>
