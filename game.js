@@ -313,6 +313,14 @@ async function runGameMasterLLM(playerAction) {
 // --- FINALIZE ACTION & RUN WRITER ---
 async function finalizeAction() {
     const bookPages = document.getElementById("book-pages");
+    const status = document.getElementById("writer-status");
+    const quill = document.getElementById("quill-icon");
+    if (status) {
+        status.textContent = "Scribe thinking...";
+        status.classList.add("writing-mode");
+    }
+    if (quill) quill.classList.add("writing");
+
     if (bookPages) {
         try {
             const paragraph = await runWriter(state, currentTurnLogs, state.isLLMActive);
@@ -1178,6 +1186,14 @@ async function restartGame() {
     await testConnection();
 
     // Scribe write opening chronicle paragraph
+    const status = document.getElementById("writer-status");
+    const quill = document.getElementById("quill-icon");
+    if (status) {
+        status.textContent = "Scribe thinking...";
+        status.classList.add("writing-mode");
+    }
+    if (quill) quill.classList.add("writing");
+
     if (bookPages) {
         runWriter(state, currentTurnLogs, state.isLLMActive).then(paragraph => {
             if (state.chronicleHistory) {
