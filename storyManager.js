@@ -67,3 +67,47 @@ export function loadStory(storyId, state) {
     state.chronicleHistory = [];
     state.decisionsLog = {};
 }
+
+/**
+ * Re-binds functional code blocks (heuristics, sub callbacks, conditions, DAG updates)
+ * back to the serialized active state object loaded from localStorage.
+ * @param {Object} state - The parsed local state object.
+ */
+export function restoreStoryFunctions(state) {
+    if (!state || !state.activeStoryId) return;
+    const config = STORY_REGISTRY[state.activeStoryId];
+    if (!config) return;
+
+    // Restore storyDag functions
+    if (state.storyDag && state.storyDag.nodes) {
+        for (const nodeId in config.storyDag.nodes) {
+            const stateNode = state.storyDag.nodes[nodeId];
+            const configNode = config.storyDag.nodes[nodeId];
+            if (stateNode && configNode) {
+                stateNode.convergenceCheck = configNode.convergenceCheck;
+                stateNode.updateObjectives = configNode.updateObjectives;
+                
+                if (stateNode.decisionPoints && configNode.decisionPoints) {
+                    stateNode.decisionPoints.forEach((stateDp, idx) => {
+                        const configDp = configNode.decisionPoints[idx];
+                        if (stateDp && configDp) {
+                            stateDp.condition = configDp.condition;
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    // Restore actor functions
+    if (state.actors) {
+        for (const actorId in config.actors) {
+            const stateActor = state.actors[actorId];
+            const configActor = config.actors[actorId];
+            if (stateActor && configActor) {
+                stateActor.heuristics = configActor.heuristics;
+                stateActor.subscriptions = configActor.subscriptions || {};
+            }
+        }
+    }
+}

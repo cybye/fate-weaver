@@ -69,18 +69,7 @@ ${logSummary}`;
                 return cleanParagraphText(result.paragraph.trim(), state);
             }
         } catch (e) {
-            console.warn("[Writer Layer] Primary LLM attempt failed, sleeping 300ms before retry...", e);
-            await sleep(300);
-            
-            // Attempt 2 (Retry)
-            try {
-                const result = await callOllama(prompt, WRITER_PROMPT_TEMPLATE);
-                if (result && result.paragraph) {
-                    return cleanParagraphText(result.paragraph.trim(), state);
-                }
-            } catch (retryError) {
-                console.error("[Writer Layer] LLM retry attempt failed. Falling back to generic atmosphere.", retryError);
-            }
+            console.warn("[Writer Layer] LLM attempt timed out or failed. Falling back to generic atmosphere.", e);
         }
     }
 

@@ -6,7 +6,7 @@ import { updateActor, broadcastEvent, getFormattedMemories } from './actors.js';
 import { runDirector } from './director.js';
 import { runWriter, typewriteText, toggleNarrator, isNarratorActive, speakText } from './writer.js';
 import { runAutoPlayer, checkDecisionPoints } from './autoplayer.js';
-import { loadStory, STORY_REGISTRY } from './storyManager.js';
+import { loadStory, STORY_REGISTRY, restoreStoryFunctions } from './storyManager.js';
 
 // --- WRITER LOG QUEUE ---
 let currentTurnLogs = [];
@@ -323,6 +323,9 @@ async function finalizeAction() {
 
     if (bookPages) {
         try {
+            if (state.isLLMActive) {
+                logGame("system", "<i>[Scribe is drafting the chronicle chapter...]</i>");
+            }
             const paragraph = await runWriter(state, currentTurnLogs, state.isLLMActive);
             if (state.chronicleHistory) {
                 state.chronicleHistory.push(paragraph);
@@ -352,7 +355,11 @@ async function finalizeAction() {
 
 // --- GAME TICK ENGINE ---
 async function tickGame(playerInput) {
-    if (state.storyState !== "pending" || state.isWriting) return;
+    console.log("[TRACE] tickGame called with input:", playerInput, "state.storyState:", state.storyState, "state.isWriting:", state.isWriting);
+    if ((state.storyState !== "pending" && state.storyState !== "running") || state.isWriting) {
+        console.warn("[TRACE] tickGame exited early. Blocked by state condition.");
+        return;
+    }
 
     // --- AutoPlay: detect whether this is a human turn or an auto-tick ---
     const isAutoTick = (playerInput === null);
@@ -432,6 +439,7 @@ async function tickGame(playerInput) {
         toolCall = { tool_name: "wait", arguments: {} };
     } else {
         if (state.isLLMActive) {
+            logGame("system", "<i>[Consulting local LLM parser...]</i>");
             toolCall = await runToolCallingParserLLM(playerAction);
         } else {
             // Local regex checks fallback
@@ -759,7 +767,7 @@ Describe the specified target. Output EXACTLY this JSON: { "description": "Your 
 
     // 5. Assert Narrative Convergence Goal (defined in active story config)
     const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
-    const convergenceCheck = activeMilestone ? activeMilestone.checkConvergence(state) : null;
+    const convergenceCheck = activeMilestone ? activeMilestone.convergenceCheck(state) : null;
     
     if (convergenceCheck) {
         if (convergenceCheck.status === "completed") {
@@ -1019,6 +1027,7 @@ function updateUI() {
         while (curr && curr !== state.activeMilestoneId) {
             completedMilestones.push(curr);
             const node = state.storyDag.nodes[curr];
+            if (!node) break;
             curr = node.nextNodes && node.nextNodes[0];
         }
 
@@ -1163,54 +1172,66 @@ async function restartGame() {
     loadStory(selectedStoryId, state);
     state.isWriting = true; // Block inputs during intro writing!
 
-    document.getElementById("turn-counter").textContent = state.turn;
-    document.getElementById("target-state-badge").textContent = "Pending";
-    document.getElementById("target-state-badge").className = "stat-value warning";
-    document.getElementById("terminal-output").innerHTML = "";
-    document.getElementById("nudges-log").innerHTML = "";
+    try {
+        document.getElementById("turn-counter").textContent = state.turn;
+        document.getElementById("target-state-badge").textContent = "Pending";
+        document.getElementById("target-state-badge").className = "stat-value warning";
+        document.getElementById("terminal-output").innerHTML = "";
+        document.getElementById("nudges-log").innerHTML = "";
 
-    // Clear the book panel pages
-    const bookPages = document.getElementById("book-pages");
-    if (bookPages) {
-        bookPages.innerHTML = '<p class="book-placeholder">The pages are blank. Begin the journey to write the chronicle...</p>';
-    }
+        // Clear the book panel pages
+        const bookPages = document.getElementById("book-pages");
+        if (bookPages) {
+            bookPages.innerHTML = '<p class="book-placeholder">The pages are blank. Begin the journey to write the chronicle...</p>';
+        }
 
-    currentTurnLogs = [];
+        currentTurnLogs = [];
 
-    logGame("system", "<b>--- SIMULATION INITIALIZED ---</b>");
-    logGame("system", `Goal: ${state.storyDag.nodes[state.activeMilestoneId].description}`);
-    logGame("system", state.storyRooms[state.playerLocation].desc);
-    
-    initMap();
-    updateUI();
-    await testConnection();
+        logGame("system", "<b>--- SIMULATION INITIALIZED ---</b>");
+        logGame("system", `Goal: ${state.storyDag.nodes[state.activeMilestoneId].description}`);
+        logGame("system", state.storyRooms[state.playerLocation].desc);
+        
+        initMap();
+        updateUI();
+        updateAutoPlayButton();
+        
+        try {
+            await testConnection();
+        } catch (connErr) {
+            console.warn("Failed to test connection:", connErr);
+        }
 
-    // Scribe write opening chronicle paragraph
-    const status = document.getElementById("writer-status");
-    const quill = document.getElementById("quill-icon");
-    if (status) {
-        status.textContent = "Scribe thinking...";
-        status.classList.add("writing-mode");
-    }
-    if (quill) quill.classList.add("writing");
+        // Scribe write opening chronicle paragraph
+        const status = document.getElementById("writer-status");
+        const quill = document.getElementById("quill-icon");
+        if (status) {
+            status.textContent = "Scribe thinking...";
+            status.classList.add("writing-mode");
+        }
+        if (quill) quill.classList.add("writing");
 
-    if (bookPages) {
-        runWriter(state, currentTurnLogs, state.isLLMActive).then(paragraph => {
-            if (state.chronicleHistory) {
-                state.chronicleHistory.push(paragraph);
-            }
-            typewriteText(bookPages, paragraph).then(() => {
-                logGame("event", `<b>Narrative:</b> <i>${paragraph}</i>`);
-                speakText(paragraph);
+        if (bookPages) {
+            runWriter(state, currentTurnLogs, state.isLLMActive).then(paragraph => {
+                if (state.chronicleHistory) {
+                    state.chronicleHistory.push(paragraph);
+                }
+                typewriteText(bookPages, paragraph).then(() => {
+                    logGame("event", `<b>Narrative:</b> <i>${paragraph}</i>`);
+                    speakText(paragraph);
+                    state.isWriting = false;
+                    updateUI(); // Unlock controls!
+                });
+            }).catch(err => {
+                console.error("Intro writer error:", err);
                 state.isWriting = false;
-                updateUI(); // Unlock controls!
+                updateUI();
             });
-        }).catch(err => {
-            console.error("Intro writer error:", err);
+        } else {
             state.isWriting = false;
             updateUI();
-        });
-    } else {
+        }
+    } catch (initErr) {
+        console.error("Critical error during restartGame initialization:", initErr);
         state.isWriting = false;
         updateUI();
     }
@@ -1227,17 +1248,25 @@ async function testConnection() {
 // --- NATURAL LANGUAGE INTENT PARSER ---
 function handleCommandInput(event) {
     event.preventDefault();
+    console.log("[TRACE] Form submit event caught.");
     const inputEl = document.getElementById("command-input");
     const rawInput = inputEl.value.trim();
-    if (!rawInput) return;
+    console.log("[TRACE] Raw command input:", rawInput);
+    if (!rawInput) {
+        console.log("[TRACE] Empty command. Exiting submit handler.");
+        return;
+    }
     
     inputEl.value = "";
 
+    console.log("[TRACE] current state.storyState:", state.storyState);
     if (state.storyState !== "pending" && state.storyState !== "running") {
+        console.warn("[TRACE] Command blocked: story state indicates simulation has ended.");
         logGame("system", "The simulation has ended. Click 'Restart Simulation' to try again.");
         return;
     }
 
+    console.log("[TRACE] Forwarding command to tickGame...");
     tickGame(rawInput);
 }
 
@@ -1338,7 +1367,7 @@ window.onload = () => {
                 }
             }
             
-            restoreActorFunctions(state.actors);
+            restoreStoryFunctions(state);
             
             // Rebuild terminal DOM history
             const output = document.getElementById("terminal-output");
@@ -1389,6 +1418,7 @@ window.onload = () => {
             document.getElementById("turn-counter").textContent = state.turn;
             initMap();
             updateUI();
+            updateAutoPlayButton();
             testConnection();
         } catch (err) {
             console.error("Failed to parse saved state, starting new game:", err);
