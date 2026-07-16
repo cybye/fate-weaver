@@ -1,176 +1,257 @@
 import { ENGINE_CONFIG } from './config.js';
 
-// Ollama HTTP client wrapper
+// Local, secure Ollama client implementation (eliminates external CDN dependencies)
+class Ollama {
+  constructor(config = {}) {
+    this.host = config.host || 'http://127.0.0.1:11434';
+  }
+
+  async generate(options, extra = {}) {
+    const url = `${this.host}/api/generate`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: options.model,
+        prompt: options.prompt,
+        stream: false,
+        format: options.format,
+        options: options.options
+      }),
+      signal: extra.signal
+    });
+    if (!response.ok) {
+      throw new Error(`Ollama returned status ${response.status}`);
+    }
+    return await response.json();
+  }
+
+  async list(extra = {}) {
+    const url = `${this.host}/api/tags`;
+    const response = await fetch(url, {
+      method: 'GET',
+      signal: extra.signal
+    });
+    if (!response.ok) {
+      throw new Error(`Ollama returned status ${response.status}`);
+    }
+    return await response.json();
+  }
+}
+
+const resolvedHost = new URL(ENGINE_CONFIG.defaultOllamaUrl, window.location.href).href;
+const ollamaClient = new Ollama({ host: resolvedHost });
+
+// Ollama client wrapper using official @ollama/ollama-js
 export async function callOllama(prompt, systemInstruction = "") {
-    const url = ENGINE_CONFIG.defaultOllamaUrl + "/api/generate";
-    const model = ENGINE_CONFIG.defaultOllamaModel;
+  const model = ENGINE_CONFIG.defaultOllamaModel;
 
-    // Inject format expectation in prompt
-    const formattedPrompt = `${systemInstruction}\n\nRespond ONLY with a valid JSON block matching the exact structure. No markdown formatting. No conversational text.\n\nInput Context:\n${prompt}`;
+  // Inject format expectation in prompt
+  const formattedPrompt = `${systemInstruction}\n\nRespond ONLY with a valid JSON block matching the exact structure. No markdown formatting. No conversational text.\n\nInput Context:\n${prompt}`;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+  try {
+    const response = await ollamaClient.generate({
+      model: model,
+      prompt: formattedPrompt,
+      stream: false,
+      format: "json",
+      think: false,
+      options: {
+        //temperature: 0.6
+      }
+    }, {
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    let rawText = response.response.trim();
+    console.log(`[Ollama Client] Raw response (Length: ${rawText.length}): "${rawText}"`);
+
+    const start = rawText.indexOf('{');
+    const end = rawText.lastIndexOf('}');
+    if (start !== -1 && end !== -1 && end > start) {
+      rawText = rawText.substring(start, end + 1);
+    }
 
     try {
-        const response = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                model: model,
-                prompt: formattedPrompt,
-                stream: false,
-                format: "json",
-                options: {
-                    temperature: 0.6
-                }
-            }),
-            signal: controller.signal
+      return dirtyJsonParse(rawText);
+    } catch (parseError) {
+      console.warn("[Ollama Client] JSON parsing failed. Attempting regex fallback. Raw text block was:", rawText);
+      console.warn("[Ollama Client] Parser error details:", parseError);
+
+      const paragraphMatch = rawText.match(/"paragraph"\s*:\s*"([\s\S]*?)"\s*(?:,|\})/);
+      if (paragraphMatch) {
+        return { paragraph: paragraphMatch[1].trim() };
+      }
+
+      const dialogueMatch = rawText.match(/"dialogue"\s*:\s*"([\s\S]*?)"\s*(?:,|\})/);
+      if (dialogueMatch) {
+        return { dialogue: dialogueMatch[1].trim() };
+      }
+
+      // Actor plan/thought fallback
+      const planMatch = rawText.match(/"plan"\s*:\s*\[([\s\S]*?)\]/);
+      const thoughtMatch = rawText.match(/"thought"\s*:\s*"([\s\S]*?)"/);
+      if (planMatch || thoughtMatch) {
+        const plan = planMatch
+          ? planMatch[1].split(',').map(s => s.replace(/["'\s]/g, '')).filter(Boolean)
+          : [];
+        const thought = thoughtMatch ? thoughtMatch[1].trim() : "";
+        return { plan, thought, desires: {} };
+      }
+
+      if (rawText.length > 20 && !rawText.includes("{")) {
+        return { paragraph: rawText };
+      }
+
+      // Match the longest quoted string value (resilient to chain of thought keys)
+      const matches = rawText.match(/"[\w_]+"\s*:\s*"([\s\S]*?)"/g);
+      if (matches) {
+        let longestVal = "";
+        matches.forEach(m => {
+          const valMatch = m.match(/"[\w_]+"\s*:\s*"([\s\S]*?)"/);
+          if (valMatch) {
+            const val = valMatch[1];
+            const isMeta = /(?:user wants|novelizing|Story Context|Current Turn|Scene description|Constraints:)/i.test(val);
+            if (!isMeta && val.length > longestVal.length) {
+              longestVal = val;
+            }
+          }
         });
-
-        clearTimeout(timeoutId);
-        if (!response.ok) throw new Error(`Ollama returned status ${response.status}`);
-        const data = await response.json();
-        
-        let rawText = data.response.trim();
-        const start = rawText.indexOf('{');
-        const end = rawText.lastIndexOf('}');
-        if (start !== -1 && end !== -1 && end > start) {
-            rawText = rawText.substring(start, end + 1);
+        if (longestVal.length > 50) {
+          const cleanStr = longestVal.replace(/^(?:\d+\.\s*)?(?:Refining for flow:|Final Draft:|Paragraph:|New Draft:|Draft:|Thought:)\s*/i, "");
+          return { paragraph: cleanStr.trim() };
         }
-        
-        try {
-            return dirtyJsonParse(rawText);
-        } catch (parseError) {
-            console.warn("[Ollama Client] JSON parsing failed, attempting regex extraction fallback:", parseError);
-            
-            const paragraphMatch = rawText.match(/"paragraph"\s*:\s*"([\s\S]*?)"\s*(?:,|\})/);
-            if (paragraphMatch) {
-                return { paragraph: paragraphMatch[1].trim() };
-            }
-            
-            const dialogueMatch = rawText.match(/"dialogue"\s*:\s*"([\s\S]*?)"\s*(?:,|\})/);
-            if (dialogueMatch) {
-                return { dialogue: dialogueMatch[1].trim() };
-            }
+      }
 
-            // Actor plan/thought fallback
-            const planMatch = rawText.match(/"plan"\s*:\s*\[([\s\S]*?)\]/);
-            const thoughtMatch = rawText.match(/"thought"\s*:\s*"([\s\S]*?)"/);
-            if (planMatch || thoughtMatch) {
-                const plan = planMatch 
-                    ? planMatch[1].split(',').map(s => s.replace(/["'\s]/g, '')).filter(Boolean)
-                    : [];
-                const thought = thoughtMatch ? thoughtMatch[1].trim() : "";
-                return { plan, thought, desires: {} };
-            }
-            
-            if (rawText.length > 20 && !rawText.includes("{")) {
-                return { paragraph: rawText };
-            }
-            
-            throw parseError;
-        }
-    } catch (e) {
-        clearTimeout(timeoutId);
-        throw e;
+      throw parseError;
     }
+  } catch (e) {
+    clearTimeout(timeoutId);
+    throw e;
+  }
 }
 
 function dirtyJsonParse(rawText) {
-    try {
-        const repaired = jsonrepair(rawText);
-        return JSON.parse(repaired);
-    } catch (e) {
-        console.warn("[Ollama Client] jsonrepair failed, trying direct parse fallback.", e);
-        return JSON.parse(rawText);
-    }
+  try {
+    const repaired = jsonrepair(rawText);
+    console.log("[Ollama Client] Repaired JSON output:", repaired);
+    return JSON.parse(repaired);
+  } catch (e) {
+    console.warn("[Ollama Client] jsonrepair failed. Raw text:", rawText);
+    console.warn("[Ollama Client] jsonrepair error details:", e);
+    return JSON.parse(rawText);
+  }
 }
 
 // Self-contained ES6 jsonrepair implementation and helpers
 const regexUrlStart = /^https?:\/\//i;
 const regexUrlChar = /[\w\-._~:\/?#\[\]@!$&'()*+,;=]/;
 
+const controlCharacters = {
+  '\b': '\\b',
+  '\f': '\\f',
+  '\n': '\\n',
+  '\r': '\\r',
+  '\t': '\\t'
+};
+
+const escapeCharacters = {
+  '"': '"',
+  '\\': '\\',
+  '/': '/',
+  'b': '\b',
+  'f': '\f',
+  'n': '\n',
+  'r': '\r',
+  't': '\t'
+};
+
 function isQuote(char) {
-    return char === '"' || char === "'" || char === '`';
+  return char === '"' || char === "'" || char === '`';
 }
 function isDoubleQuote(char) {
-    return char === '"';
+  return char === '"';
 }
 function isSingleQuote(char) {
-    return char === "'";
+  return char === "'";
 }
 function isSingleQuoteLike(char) {
-    return char === '`';
+  return char === '`';
 }
 function isDoubleQuoteLike(char) {
-    return char === '“' || char === '”';
+  return char === '“' || char === '”';
 }
 function isWhitespace(text, index) {
-    if (index < 0 || index >= text.length) return false;
-    const char = text[index];
-    return char === ' ' || char === '\t' || char === '\n' || char === '\r';
+  if (index < 0 || index >= text.length) return false;
+  const char = text[index];
+  return char === ' ' || char === '\t' || char === '\n' || char === '\r';
 }
 function isWhitespaceExceptNewline(text, index) {
-    if (index < 0 || index >= text.length) return false;
-    const char = text[index];
-    return char === ' ' || char === '\t' || char === '\r';
+  if (index < 0 || index >= text.length) return false;
+  const char = text[index];
+  return char === ' ' || char === '\t' || char === '\r';
 }
 function isSpecialWhitespace(text, index) {
-    if (index < 0 || index >= text.length) return false;
-    const char = text[index];
-    return char === '\u00A0' || char === '\u2000' || char === '\u2001' || char === '\u2002' || char === '\u2003';
+  if (index < 0 || index >= text.length) return false;
+  const char = text[index];
+  return char === '\u00A0' || char === '\u2000' || char === '\u2001' || char === '\u2002' || char === '\u2003';
 }
 function isDelimiter(char) {
-    return char === ',' || char === ':' || char === '[' || char === ']' || char === '{' || char === '}';
+  return char === ',' || char === ':' || char === '[' || char === ']' || char === '{' || char === '}';
 }
 function isDigit(char) {
-    return char >= '0' && char <= '9';
+  return char >= '0' && char <= '9';
 }
 function isHex(char) {
-    return (char >= '0' && char <= '9') || (char >= 'a' && char <= 'f') || (char >= 'A' && char <= 'F');
+  return (char >= '0' && char <= '9') || (char >= 'a' && char <= 'f') || (char >= 'A' && char <= 'F');
 }
 function isControlCharacter(char) {
-    return char === '\b' || char === '\f' || char === '\n' || char === '\r' || char === '\t';
+  return char === '\b' || char === '\f' || char === '\n' || char === '\r' || char === '\t';
 }
 function isValidStringCharacter(char) {
-    return true;
+  return true;
 }
 function isFunctionNameCharStart(char) {
-    return (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || char === '_' || char === '$';
+  return (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || char === '_' || char === '$';
 }
 function isFunctionNameChar(char) {
-    return isFunctionNameCharStart(char) || isDigit(char);
+  return isFunctionNameCharStart(char) || isDigit(char);
 }
 function isUnquotedStringDelimiter(char) {
-    return char === ' ' || char === '\t' || char === '\n' || char === '\r' || isDelimiter(char) || isQuote(char);
+  return char === ' ' || char === '\t' || char === '\n' || char === '\r' || isDelimiter(char) || isQuote(char);
 }
 function insertBeforeLastWhitespace(output, char) {
-    let j = output.length - 1;
-    while (j >= 0 && (output[j] === ' ' || output[j] === '\t' || output[j] === '\n' || output[j] === '\r')) {
-        j--;
-    }
-    return output.substring(0, j + 1) + char + output.substring(j + 1);
+  let j = output.length - 1;
+  while (j >= 0 && (output[j] === ' ' || output[j] === '\t' || output[j] === '\n' || output[j] === '\r')) {
+    j--;
+  }
+  return output.substring(0, j + 1) + char + output.substring(j + 1);
 }
 function endsWithCommaOrNewline(output) {
-    let j = output.length - 1;
-    while (j >= 0 && (output[j] === ' ' || output[j] === '\t' || output[j] === '\n' || output[j] === '\r')) {
-        j--;
-    }
-    return output[j] === ',' || output[j] === '\n';
+  let j = output.length - 1;
+  while (j >= 0 && (output[j] === ' ' || output[j] === '\t' || output[j] === '\n' || output[j] === '\r')) {
+    j--;
+  }
+  return output[j] === ',' || output[j] === '\n';
 }
 function stripLastOccurrence(output, char, quoteCheck = false) {
-    let idx = output.lastIndexOf(char);
-    if (idx !== -1) {
-        return output.substring(0, idx) + output.substring(idx + 1);
-    }
-    return output;
+  let idx = output.lastIndexOf(char);
+  if (idx !== -1) {
+    return output.substring(0, idx) + output.substring(idx + 1);
+  }
+  return output;
 }
 function removeAtIndex(output, index, length) {
-    return output.substring(0, index) + output.substring(index + length);
+  return output.substring(0, index) + output.substring(index + length);
 }
 
 function jsonrepair(text) {
-  var i = 0; 
+  var i = 0;
   var output = '';
 
   parseMarkdownCodeBlock(['```', '[```', '{```']);
@@ -209,7 +290,7 @@ function jsonrepair(text) {
 
   function isStartOfValue(c) {
     return c === '{' || c === '[' || c === '"' || c === "'" || isDigit(c) || c === '-' ||
-           c === 't' || c === 'f' || c === 'n' || c === 'T' || c === 'F' || c === 'N';
+      c === 't' || c === 'f' || c === 'n' || c === 'T' || c === 'F' || c === 'N';
   }
 
   function parseValue() {
@@ -818,18 +899,16 @@ function jsonrepair(text) {
     throw new Error('Invalid unicode character at position ' + i);
   }
 }
-}
 
 export async function testOllamaConnection() {
-    const url = ENGINE_CONFIG.defaultOllamaUrl + "/api/tags";
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1500);
-    try {
-        const res = await fetch(url, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        return res.ok;
-    } catch (e) {
-        clearTimeout(timeoutId);
-        return false;
-    }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 1500);
+  try {
+    await ollamaClient.list({ signal: controller.signal });
+    clearTimeout(timeoutId);
+    return true;
+  } catch (e) {
+    clearTimeout(timeoutId);
+    return false;
+  }
 }

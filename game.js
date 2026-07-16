@@ -353,6 +353,135 @@ async function finalizeAction() {
     }
 }
 
+async function runStoryConvergenceCheck(state) {
+    const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
+    if (!activeMilestone) return;
+    const convergenceCheck = activeMilestone.convergenceCheck(state);
+    
+    if (convergenceCheck) {
+        if (convergenceCheck.status === "completed") {
+            // Voice convergence with actor speech if available
+            if (convergenceCheck.actorSpeechId) {
+                const actorId = convergenceCheck.actorSpeechId;
+                const actor = state.actors[actorId];
+                if (actor) {
+                    let spoken = convergenceCheck.fallbackSpeech;
+                    if (state.isLLMActive) {
+                        try {
+                            const itemName = (activeMilestone.pressureConfig && activeMilestone.pressureConfig.keyItems && activeMilestone.pressureConfig.keyItems[0]) || "the item";
+                            let prompt = convergenceCheck.prompt;
+                            let systemPrompt = convergenceCheck.systemPrompt;
+                            
+                            if (!prompt) {
+                                if (actor.id === "bob") {
+                                    if (!state.bobToldStory) {
+                                        prompt = `Formulate a short spoken dialogue (1-2 sentences) in-character where you (${actor.name}) hand over the ${itemName} to the Player at the Castle Gates. You MUST explain the background story: that the scroll warns of a surprise midnight attack on the Castle Keep by rebel forces, and they must take it to the Alchemist Shop to brew a revealing potion. Do NOT mention that they 'requested' or 'asked' for it.`;
+                                        systemPrompt = `You are ${actor.name}, the ${actor.role}. You are at the Castle Gates with the player. Hand them the ${itemName} and explain that it contains plans of a surprise midnight attack on the Keep by rebel forces, and they must take it to the Alchemist to brew a revealing potion. Output EXACTLY this JSON: { "dialogue": "Your spoken dialogue here" }`;
+                                    } else {
+                                        prompt = `Formulate a short spoken dialogue (1-2 sentences) in-character where you (${actor.name}) hand over the ${itemName} to the Player for safekeeping, reminding them to take it to the Alchemist Shop. Mention that you've reached the Castle Gates. Do NOT mention that they 'requested' or 'asked' for it.`;
+                                        systemPrompt = `You are ${actor.name}, the ${actor.role}. You are at the Castle Gates with the player and are handing them the ${itemName} for safekeeping. Remind them to take it to the Alchemist. Output EXACTLY this JSON: { "dialogue": "Your spoken dialogue here" }`;
+                                    }
+                                    state.bobToldStory = true; // Mark as told upon handoff
+                                } else {
+                                    prompt = `Formulate a short spoken dialogue (1-2 sentences) in-character where you (${actor.name}) hand over the ${itemName} to the Player. Mention that you've reached the Castle Gates.`;
+                                    systemPrompt = `You are ${actor.name}, the ${actor.role}. You are at the Castle Gates with the player and are handing them the ${itemName}. Output EXACTLY this JSON: { "dialogue": "Your spoken dialogue here" }`;
+                                }
+                            }
+                            
+                            const res = await callOllama(prompt, systemPrompt);
+                            if (res && res.dialogue) {
+                                spoken = res.dialogue;
+                            }
+                        } catch (e) {
+                            console.warn("Failed to generate dynamic handoff speech.", e);
+                        }
+                    }
+                    logGame("npc", `<b>${actor.name} says:</b> "${spoken}"`);
+                    broadcastEvent(state, {
+                        type: "dialogue",
+                        description: `${actor.name} said: "${spoken}"`,
+                        location: actor.location,
+                        importance: 6,
+                        originActorId: actor.id,
+                        targetActorId: "player"
+                    }, logGame);
+                }
+            }
+
+            // Trigger onComplete hook if it exists
+            if (activeMilestone.onComplete) {
+                activeMilestone.onComplete(state, logGame);
+            }
+
+            if (activeMilestone.nextNodes && activeMilestone.nextNodes.length > 0) {
+                // Transition to the next milestone in the DAG
+                state.activeMilestoneId = activeMilestone.nextNodes[0];
+                state.milestoneStartTurn = state.turn;
+                const nextMilestone = state.storyDag.nodes[state.activeMilestoneId];
+                logGame("event", convergenceCheck.msg);
+                logGame("director-announce", `<b>STORY ADVANCEMENT:</b> New Objective: ${nextMilestone.description}`);
+                logDirector(`STORY ADVANCEMENT: Active objective is now: ${nextMilestone.title}`);
+            } else {
+                state.storyState = "completed";
+                document.getElementById("target-state-badge").textContent = "Completed";
+                document.getElementById("target-state-badge").className = "stat-value success";
+                logGame("event", convergenceCheck.msg);
+                logGame("event", "<b>STORY COMPLETE:</b> You have successfully completed the chapter!");
+                logDirector("SUCCESS: Story DAG fully traversed.");
+            }
+        } else if (convergenceCheck.status === "pending") {
+            // Voice the pending actor speech warning the player about Sly
+            if (convergenceCheck.actorSpeechId) {
+                const actorId = convergenceCheck.actorSpeechId;
+                const actor = state.actors[actorId];
+                if (actor) {
+                    let spoken = convergenceCheck.fallbackSpeech;
+                    if (state.isLLMActive) {
+                        try {
+                            const itemName = (activeMilestone.pressureConfig && activeMilestone.pressureConfig.keyItems && activeMilestone.pressureConfig.keyItems[0]) || "the item";
+                            const prompt = `Formulate a short spoken dialogue (1-2 sentences) in-character where you (${actor.name}) refuse to hand over the ${itemName} because Sly the Thief is present in the room. Ask the player to shout for a guard.`;
+                            const systemPrompt = `You are ${actor.name}, the ${actor.role}. You are at the Castle Gates with the player but Sly the Thief is also here. Output EXACTLY this JSON: { "dialogue": "Your spoken warning dialogue here" }`;
+                            const res = await callOllama(prompt, systemPrompt);
+                            if (res && res.dialogue) {
+                                spoken = res.dialogue;
+                            }
+                        } catch (e) {
+                            console.warn("Failed to generate dynamic handoff warning speech.", e);
+                        }
+                    }
+                    logGame("npc", `<b>${actor.name} says:</b> "${spoken}"`);
+                    broadcastEvent(state, {
+                        type: "dialogue",
+                        description: `${actor.name} said: "${spoken}"`,
+                        location: actor.location,
+                        importance: 6,
+                        originActorId: actor.id,
+                        targetActorId: "player"
+                    }, logGame);
+                    
+                    // Spontaneously publish shout event for Bob calling the guard!
+                    publishEvent(state, {
+                        topic: "shout",
+                        location: actor.location,
+                        payload: { message: "Guard! Help! Sly the Thief is here!" }
+                    }, logGame, logDirector);
+                }
+            }
+        }
+    } 
+    // Max turns for current milestone exceeded
+    else {
+        const elapsedTurns = state.turn - state.milestoneStartTurn;
+        if (elapsedTurns >= activeMilestone.maxTurns) {
+            state.storyState = "failed";
+            document.getElementById("target-state-badge").textContent = "Failed";
+            document.getElementById("target-state-badge").className = "stat-value error";
+            logGame("director-announce", `<b>STORY FAILED:</b> Milestone '${activeMilestone.title}' failed. Turn limit (${activeMilestone.maxTurns} turns) exceeded.`);
+            logDirector(`FAILED: Milestone time limit exceeded.`);
+        }
+    }
+}
+
 // --- GAME TICK ENGINE ---
 async function tickGame(playerInput) {
     const oldLocation = state.playerLocation;
@@ -641,6 +770,7 @@ Write what you say to them to progress your goal. Keep it brief and thematic.`;
         } else {
             logGame("system", "There is nobody here by that name.");
         }
+        await runStoryConvergenceCheck(state);
         await finalizeAction();
         return; // Non-ticking turn
     }
@@ -812,131 +942,7 @@ Describe the specified target. Output EXACTLY this JSON: { "description": "Your 
     }
 
     // 5. Assert Narrative Convergence Goal (defined in active story config)
-    const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
-    const convergenceCheck = activeMilestone ? activeMilestone.convergenceCheck(state) : null;
-    
-    if (convergenceCheck) {
-        if (convergenceCheck.status === "completed") {
-            // Voice convergence with actor speech if available
-            if (convergenceCheck.actorSpeechId) {
-                const actorId = convergenceCheck.actorSpeechId;
-                const actor = state.actors[actorId];
-                if (actor) {
-                    let spoken = convergenceCheck.fallbackSpeech;
-                    if (state.isLLMActive) {
-                        try {
-                            const itemName = (activeMilestone.pressureConfig && activeMilestone.pressureConfig.keyItems && activeMilestone.pressureConfig.keyItems[0]) || "the item";
-                            let prompt = convergenceCheck.prompt;
-                            let systemPrompt = convergenceCheck.systemPrompt;
-                            
-                            if (!prompt) {
-                                if (actor.id === "bob") {
-                                    if (!state.bobToldStory) {
-                                        prompt = `Formulate a short spoken dialogue (1-2 sentences) in-character where you (${actor.name}) hand over the ${itemName} to the Player at the Castle Gates. You MUST explain the background story: that the scroll warns of a surprise midnight attack on the Castle Keep by rebel forces, and they must take it to the Alchemist Shop to brew a revealing potion. Do NOT mention that they 'requested' or 'asked' for it.`;
-                                        systemPrompt = `You are ${actor.name}, the ${actor.role}. You are at the Castle Gates with the player. Hand them the ${itemName} and explain that it contains plans of a surprise midnight attack on the Keep by rebel forces, and they must take it to the Alchemist to brew a revealing potion. Output EXACTLY this JSON: { "dialogue": "Your spoken dialogue here" }`;
-                                    } else {
-                                        prompt = `Formulate a short spoken dialogue (1-2 sentences) in-character where you (${actor.name}) hand over the ${itemName} to the Player for safekeeping, reminding them to take it to the Alchemist Shop. Mention that you've reached the Castle Gates. Do NOT mention that they 'requested' or 'asked' for it.`;
-                                        systemPrompt = `You are ${actor.name}, the ${actor.role}. You are at the Castle Gates with the player and are handing them the ${itemName} for safekeeping. Remind them to take it to the Alchemist. Output EXACTLY this JSON: { "dialogue": "Your spoken dialogue here" }`;
-                                    }
-                                    state.bobToldStory = true; // Mark as told upon handoff
-                                } else {
-                                    prompt = `Formulate a short spoken dialogue (1-2 sentences) in-character where you (${actor.name}) hand over the ${itemName} to the Player. Mention that you've reached the Castle Gates.`;
-                                    systemPrompt = `You are ${actor.name}, the ${actor.role}. You are at the Castle Gates with the player and are handing them the ${itemName}. Output EXACTLY this JSON: { "dialogue": "Your spoken dialogue here" }`;
-                                }
-                            }
-                            
-                            const res = await callOllama(prompt, systemPrompt);
-                            if (res && res.dialogue) {
-                                spoken = res.dialogue;
-                            }
-                        } catch (e) {
-                            console.warn("Failed to generate dynamic handoff speech.", e);
-                        }
-                    }
-                    logGame("npc", `<b>${actor.name} says:</b> "${spoken}"`);
-                    broadcastEvent(state, {
-                        type: "dialogue",
-                        description: `${actor.name} said: "${spoken}"`,
-                        location: actor.location,
-                        importance: 6,
-                        originActorId: actor.id,
-                        targetActorId: "player"
-                    }, logGame);
-                }
-            }
-
-            // Trigger onComplete hook if it exists
-            if (activeMilestone.onComplete) {
-                activeMilestone.onComplete(state, logGame);
-            }
-
-            if (activeMilestone.nextNodes && activeMilestone.nextNodes.length > 0) {
-                // Transition to the next milestone in the DAG
-                state.activeMilestoneId = activeMilestone.nextNodes[0];
-                state.milestoneStartTurn = state.turn;
-                const nextMilestone = state.storyDag.nodes[state.activeMilestoneId];
-                logGame("event", convergenceCheck.msg);
-                logGame("director-announce", `<b>STORY ADVANCEMENT:</b> New Objective: ${nextMilestone.description}`);
-                logDirector(`STORY ADVANCEMENT: Active objective is now: ${nextMilestone.title}`);
-            } else {
-                state.storyState = "completed";
-                document.getElementById("target-state-badge").textContent = "Completed";
-                document.getElementById("target-state-badge").className = "stat-value success";
-                logGame("event", convergenceCheck.msg);
-                logGame("event", "<b>STORY COMPLETE:</b> You have successfully completed the chapter!");
-                logDirector("SUCCESS: Story DAG fully traversed.");
-            }
-        } else if (convergenceCheck.status === "pending") {
-            // Voice the pending actor speech warning the player about Sly
-            if (convergenceCheck.actorSpeechId) {
-                const actorId = convergenceCheck.actorSpeechId;
-                const actor = state.actors[actorId];
-                if (actor) {
-                    let spoken = convergenceCheck.fallbackSpeech;
-                    if (state.isLLMActive) {
-                        try {
-                            const itemName = (activeMilestone.pressureConfig && activeMilestone.pressureConfig.keyItems && activeMilestone.pressureConfig.keyItems[0]) || "the item";
-                            const prompt = `Formulate a short spoken dialogue (1-2 sentences) in-character where you (${actor.name}) refuse to hand over the ${itemName} because Sly the Thief is present in the room. Ask the player to shout for a guard.`;
-                            const systemPrompt = `You are ${actor.name}, the ${actor.role}. You are at the Castle Gates with the player but Sly the Thief is also here. Output EXACTLY this JSON: { "dialogue": "Your spoken warning dialogue here" }`;
-                            const res = await callOllama(prompt, systemPrompt);
-                            if (res && res.dialogue) {
-                                spoken = res.dialogue;
-                            }
-                        } catch (e) {
-                            console.warn("Failed to generate dynamic handoff warning speech.", e);
-                        }
-                    }
-                    logGame("npc", `<b>${actor.name} says:</b> "${spoken}"`);
-                    broadcastEvent(state, {
-                        type: "dialogue",
-                        description: `${actor.name} said: "${spoken}"`,
-                        location: actor.location,
-                        importance: 6,
-                        originActorId: actor.id,
-                        targetActorId: "player"
-                    }, logGame);
-                    
-                    // Spontaneously publish shout event for Bob calling the guard!
-                    publishEvent(state, {
-                        topic: "shout",
-                        location: actor.location,
-                        payload: { message: "Guard! Help! Sly the Thief is here!" }
-                    }, logGame, logDirector);
-                }
-            }
-        }
-    } 
-    // Max turns for current milestone exceeded
-    else {
-        const elapsedTurns = state.turn - state.milestoneStartTurn;
-        if (elapsedTurns >= activeMilestone.maxTurns) {
-            state.storyState = "failed";
-            document.getElementById("target-state-badge").textContent = "Failed";
-            document.getElementById("target-state-badge").className = "stat-value error";
-            logGame("director-announce", `<b>STORY FAILED:</b> Milestone '${activeMilestone.title}' failed. Turn limit (${activeMilestone.maxTurns} turns) exceeded.`);
-            logDirector(`FAILED: Milestone time limit exceeded.`);
-        }
-    }
+    await runStoryConvergenceCheck(state);
 
     if (state.playerLocation !== oldLocation) {
         state._playerTurnStallCount = 0;
@@ -948,6 +954,7 @@ Describe the specified target. Output EXACTLY this JSON: { "description": "Your 
     document.getElementById("turn-counter").textContent = state.turn;
 
     // Calculate dynamic stats
+    const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
     if (activeMilestone && activeMilestone.pressureConfig && activeMilestone.pressureConfig.targetRoom) {
         const targetRoom = activeMilestone.pressureConfig.targetRoom;
         let path = findPath(state.playerLocation, targetRoom, state.blockedConnections);

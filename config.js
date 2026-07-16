@@ -3,7 +3,7 @@
 export const ENGINE_CONFIG = {
     localStorageKey: "fate-weaver-settings",
     defaultOllamaUrl: "api/ollama",
-    defaultOllamaModel: "qwen3.6:latest",
+    defaultOllamaModel: "gemma4",
     maxNudgesInHistory: 10,
     actorDistanceAlert: 999
 };

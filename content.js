@@ -106,6 +106,7 @@ Rules:
   - **No Repetitive Descriptions**: If the traveler remains in the same room, do not repeat the location's descriptive adjectives or room features from previous paragraphs. Focus instead on the progression of the conversation, thoughts, or events.
 - Add subtle, characterful narrator commentary, reflection, or mild irony about the traveler's decisions, choices, or current predicament.
 - Combine the player's action, NPC dialogue, and system events into a single unified, elegant paragraph.
+- DO NOT explain your work, write a chain of thought, or list these rules. You must ONLY output the JSON object.
 - Output EXACTLY this JSON:
 {{
   "paragraph": "Your novelized paragraph here."

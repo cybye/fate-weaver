@@ -52,6 +52,7 @@ export async function runWriter(state, turnLogs, isLLMActive) {
         : "(This is the beginning of the story.)";
 
     const prompt = `Game state context:
+- Player Name: ${state.playerName || "Leo"} (You MUST use this exact name or 'the traveler' when referring to the player. Do NOT invent other names.)
 - Player location: ${state.storyRooms[state.playerLocation].name}
 - Player Inventory: ${JSON.stringify(state.playerInventory)}
 - Active Milestone: ${state.activeMilestoneId}
@@ -70,8 +71,25 @@ ${logSummary}`;
         try {
             console.log(`[Writer Layer] Attempting chronicle generation (Attempt ${attempt}/${maxAttempts})...`);
             const result = await callOllama(prompt, WRITER_PROMPT_TEMPLATE);
-            if (result && result.paragraph) {
-                return cleanParagraphText(result.paragraph.trim(), state);
+            if (result) {
+                if (result.paragraph) {
+                    return cleanParagraphText(result.paragraph.trim(), state);
+                }
+                // Fallback: scan all keys for the longest string value (useful for Chain of Thought outputs)
+                let longestStr = "";
+                for (const key in result) {
+                    if (typeof result[key] === "string") {
+                        const val = result[key];
+                        const isMeta = /(?:user wants|novelizing|Story Context|Current Turn|Scene description|Constraints:)/i.test(val);
+                        if (!isMeta && val.length > longestStr.length) {
+                            longestStr = val;
+                        }
+                    }
+                }
+                if (longestStr.length > 50) {
+                    const cleanStr = longestStr.replace(/^(?:\d+\.\s*)?(?:Refining for flow:|Final Draft:|Paragraph:|New Draft:|Draft:|Thought:)\s*/i, "");
+                    return cleanParagraphText(cleanStr.trim(), state);
+                }
             }
         } catch (e) {
             console.warn(`[Writer Layer] Attempt ${attempt} failed:`, e);
@@ -91,6 +109,22 @@ ${logSummary}`;
 function cleanParagraphText(text, state) {
     if (!text) return text;
     let paragraph = text;
+    
+    // Unescape double quotes and clean trailing backslashes from parser boundaries
+    paragraph = paragraph.replace(/\\"/g, '"').replace(/\\+$/, '');
+    
+    // Strip trailing Chain of Thought or prompt descriptions that the LLM occasionally appends
+    const instructionsIndex = paragraph.search(/(?:\b\w+ check:|\bfor dialogue if needed|\bCheck constraints|Style check:|\d+\.\s*(?:Story )?(?:Context|Turn|Scene|Novelization|Objective|Requirements|Check)|The user wants|Style Requirements:|Formatting rules:|Rules:|I need to)/i);
+    if (instructionsIndex !== -1) {
+        paragraph = paragraph.substring(0, instructionsIndex).trim();
+    }
+    
+    // Reject instruction leakage / meta-text responses to trigger a retry
+    const isMetaText = /(?:Story Context|Current Turn|Scene description|Novelization|user wants|novelizing a game|fantasy fiction|past tense|third person|sentences\)|sentence structure|I need to)/i.test(paragraph);
+    if (isMetaText) {
+        throw new Error("LLM returned prompt instructions instead of story prose.");
+    }
+    
     if (state && state.playerName) {
         const name = state.playerName;
         const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
