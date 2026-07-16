@@ -1664,10 +1664,23 @@ window.onload = () => {
 
                         const p = document.createElement("p");
                         p.className = "chronicle-inline";
+                        let textVal = state.chronicleHistory[idx];
                         if (isFirstParagraph) {
                             p.classList.add("first-paragraph");
+                            const firstChar = textVal.charAt(0);
+                            const restText = textVal.substring(1);
+                            
+                            const dropCapSpan = document.createElement("span");
+                            dropCapSpan.className = "drop-cap";
+                            dropCapSpan.textContent = firstChar;
+                            p.appendChild(dropCapSpan);
+                            
+                            const restSpan = document.createElement("span");
+                            restSpan.textContent = restText;
+                            p.appendChild(restSpan);
+                        } else {
+                            p.textContent = textVal;
                         }
-                        p.textContent = state.chronicleHistory[idx];
                         group.appendChild(p);
                     }
 
