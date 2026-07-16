@@ -11,6 +11,11 @@ import { loadStory, STORY_REGISTRY, restoreStoryFunctions } from './storyManager
 // --- WRITER LOG QUEUE ---
 let currentTurnLogs = [];
 
+// --- TURN GROUP DOM REF ---
+// Each turn's log lines + chronicle paragraph are grouped into a div.turn-group
+let currentTurnGroup = null;
+const VISIBLE_TURN_HISTORY = 3; // How many recent turn-groups stay fully visible
+
 
 // --- GAME STATE ---
 let state = createInitialState();
@@ -57,6 +62,15 @@ function createInitialState() {
 // --- LOGGING ---
 function logGame(type, text) {
     const output = document.getElementById("terminal-output");
+
+    // Ensure we have an active turn-group container to append into
+    if (!currentTurnGroup) {
+        currentTurnGroup = document.createElement("div");
+        currentTurnGroup.className = "turn-group";
+        currentTurnGroup.dataset.turn = state.turn;
+        output.appendChild(currentTurnGroup);
+    }
+
     const p = document.createElement("p");
     p.className = `log-${type}`;
     
@@ -66,7 +80,7 @@ function logGame(type, text) {
     }
     p.innerHTML = formattedText;
     
-    output.appendChild(p);
+    currentTurnGroup.appendChild(p);
     output.scrollTop = output.scrollHeight;
 
     // Store in historical state logs
@@ -84,6 +98,82 @@ function logGame(type, text) {
     if (!isTechnicalSystemLog) {
         currentTurnLogs.push({ type, text });
     }
+}
+
+// Appends the chronicle prose paragraph inline into the current turn-group
+function appendChronicleInline(paragraph) {
+    if (!currentTurnGroup) return;
+    const output = document.getElementById("terminal-output");
+
+    // Ornamental divider
+    const divider = document.createElement("div");
+    divider.className = "chronicle-divider";
+    divider.setAttribute("aria-hidden", "true");
+    divider.innerHTML = "<span>&#10022;</span>";
+    currentTurnGroup.appendChild(divider);
+
+    // Prose paragraph
+    const p = document.createElement("p");
+    p.className = "chronicle-inline";
+    p.textContent = paragraph;
+    currentTurnGroup.appendChild(p);
+
+    if (output) output.scrollTop = output.scrollHeight;
+
+    // Seal the turn group — next logGame() call starts a fresh one
+    currentTurnGroup = null;
+}
+
+// Collapses older turn-groups beyond the VISIBLE_TURN_HISTORY threshold
+function collapseOldTurns() {
+    const output = document.getElementById("terminal-output");
+    if (!output) return;
+
+    // Collect all direct-child turn-groups (not already inside a collapsed wrapper)
+    const groups = Array.from(output.querySelectorAll(":scope > .turn-group"));
+    const visibleCount = VISIBLE_TURN_HISTORY;
+
+    if (groups.length <= visibleCount) return;
+
+    // Groups to hide = everything except the last `visibleCount`
+    const toCollapse = groups.slice(0, groups.length - visibleCount);
+    if (toCollapse.length === 0) return;
+
+    // Remove any previous collapse wrapper
+    const existing = output.querySelector(".collapsed-history");
+    if (existing) {
+        // Move its children back out, then remove it
+        while (existing.firstChild) {
+            output.insertBefore(existing.firstChild, existing);
+        }
+        existing.remove();
+    }
+
+    // Re-collect after unwrapping
+    const allGroups = Array.from(output.querySelectorAll(":scope > .turn-group"));
+    const freshToCollapse = allGroups.slice(0, allGroups.length - visibleCount);
+    if (freshToCollapse.length === 0) return;
+
+    // Build collapse wrapper
+    const wrapper = document.createElement("div");
+    wrapper.className = "collapsed-history";
+
+    const toggle = document.createElement("button");
+    toggle.className = "collapse-toggle";
+    toggle.textContent = `\u22ef ${freshToCollapse.length} earlier turn${freshToCollapse.length > 1 ? 's' : ''} \u22ef`;
+    toggle.addEventListener("click", () => {
+        wrapper.classList.toggle("expanded");
+        const isExpanded = wrapper.classList.contains("expanded");
+        toggle.textContent = isExpanded
+            ? `\u22ef hide ${freshToCollapse.length} earlier turn${freshToCollapse.length > 1 ? 's' : ''} \u22ef`
+            : `\u22ef ${freshToCollapse.length} earlier turn${freshToCollapse.length > 1 ? 's' : ''} \u22ef`;
+    });
+    wrapper.appendChild(toggle);
+
+    // Move turn-groups into wrapper (before the first visible group)
+    const firstVisible = allGroups[allGroups.length - visibleCount];
+    output.insertBefore(wrapper, firstVisible);
+    freshToCollapse.forEach(g => wrapper.appendChild(g));
 }
 
 function logDirector(text) {
@@ -330,7 +420,12 @@ async function finalizeAction() {
             if (state.chronicleHistory) {
                 state.chronicleHistory.push(paragraph);
             }
+            // Render into the right-side Chronicle panel
             await typewriteText(bookPages, paragraph);
+            // Also render inline in the Game Channel
+            appendChronicleInline(paragraph);
+            // Collapse older turns beyond the visible window
+            collapseOldTurns();
             speakText(paragraph);
         } catch (err) {
             console.error("Writer error:", err);
@@ -1185,8 +1280,30 @@ function updateUI() {
         }
     }
 
+    // --- Compact action-shortcut buttons ---
     const buttonsContainer = document.getElementById("action-buttons");
-    buttonsContainer.innerHTML = "";
+    if (buttonsContainer) buttonsContainer.innerHTML = "";
+
+    // --- Direction buttons (compact icon-style) ---
+    const dirContainer = document.getElementById("dir-buttons");
+    if (dirContainer) {
+        dirContainer.innerHTML = "";
+        if (state.storyState === "pending" || state.storyState === "running") {
+            const neighbors = getNeighbors(state.playerLocation, state.blockedConnections);
+            // Build a compact label from room name (first word or abbreviated)
+            neighbors.forEach(neighbor => {
+                const roomName = state.storyRooms[neighbor]?.name || neighbor;
+                const shortLabel = roomName.split(' ')[0].substring(0, 5); // e.g. "Taver"
+                const btn = document.createElement("button");
+                btn.className = "btn-compact btn-dir";
+                btn.title = `Go to ${roomName}`;
+                btn.textContent = shortLabel;
+                btn.disabled = state.isWriting;
+                btn.onclick = () => tickGame(`go_${neighbor}`);
+                dirContainer.appendChild(btn);
+            });
+        }
+    }
 
     const inputEl = document.getElementById("command-input");
     if (inputEl) {
@@ -1198,29 +1315,44 @@ function updateUI() {
     }
 
     if (state.storyState === "pending" || state.storyState === "running") {
-        let neighbors = getNeighbors(state.playerLocation, state.blockedConnections);
-        neighbors.forEach(neighbor => {
-            const btn = document.createElement("button");
-            btn.className = "btn";
-            btn.textContent = `Go to ${state.storyRooms[neighbor].name}`;
-            btn.disabled = state.isWriting;
-            btn.onclick = () => tickGame(`go_${neighbor}`);
-            buttonsContainer.appendChild(btn);
-        });
+        // Compact action shortcut buttons: Talk, Look, Wait
+        const npcsHere = Object.values(state.actors).filter(a => a.location === state.playerLocation);
+        if (buttonsContainer) {
+            if (npcsHere.length > 0) {
+                const talkBtn = document.createElement("button");
+                talkBtn.className = "btn-compact btn-action";
+                talkBtn.title = `Talk to ${npcsHere[0].name}`;
+                talkBtn.innerHTML = `&#9679; Talk`;
+                talkBtn.disabled = state.isWriting;
+                talkBtn.onclick = () => tickGame(`talk to ${npcsHere[0].name}`);
+                buttonsContainer.appendChild(talkBtn);
+            }
 
-        const waitBtn = document.createElement("button");
-        waitBtn.className = "btn";
-        waitBtn.textContent = "Wait / Rest (Pass Turn)";
-        waitBtn.disabled = state.isWriting;
-        waitBtn.onclick = () => tickGame("wait");
-        buttonsContainer.appendChild(waitBtn);
+            const lookBtn = document.createElement("button");
+            lookBtn.className = "btn-compact btn-action";
+            lookBtn.title = "Look around";
+            lookBtn.innerHTML = `&#128065; Look`;
+            lookBtn.disabled = state.isWriting;
+            lookBtn.onclick = () => tickGame("look");
+            buttonsContainer.appendChild(lookBtn);
+
+            const waitBtn = document.createElement("button");
+            waitBtn.className = "btn-compact btn-action";
+            waitBtn.title = "Wait / pass turn";
+            waitBtn.innerHTML = `&#8987; Wait`;
+            waitBtn.disabled = state.isWriting;
+            waitBtn.onclick = () => tickGame("wait");
+            buttonsContainer.appendChild(waitBtn);
+        }
     } else {
-        const resetBtn = document.createElement("button");
-        resetBtn.className = "btn";
-        resetBtn.textContent = "Restart Simulation";
-        resetBtn.disabled = state.isWriting;
-        resetBtn.onclick = () => restartGame();
-        buttonsContainer.appendChild(resetBtn);
+        if (buttonsContainer) {
+            const resetBtn = document.createElement("button");
+            resetBtn.className = "btn-compact btn-action";
+            resetBtn.textContent = "&#8635; Restart";
+            resetBtn.disabled = state.isWriting;
+            resetBtn.onclick = () => restartGame();
+            buttonsContainer.appendChild(resetBtn);
+        }
     }
 
     // Trigger decision points automatically during render
@@ -1253,6 +1385,7 @@ async function restartGame() {
         document.getElementById("target-state-badge").className = "stat-value warning";
         document.getElementById("terminal-output").innerHTML = "";
         document.getElementById("nudges-log").innerHTML = "";
+        currentTurnGroup = null; // Reset turn-group ref on restart
 
         // Clear the book panel pages
         const bookPages = document.getElementById("book-pages");
@@ -1261,6 +1394,7 @@ async function restartGame() {
         }
 
         currentTurnLogs = [];
+
 
         logGame("system", "<b>--- SIMULATION INITIALIZED ---</b>");
         logGame("system", `Goal: ${state.storyDag.nodes[state.activeMilestoneId].description}`);
@@ -1291,7 +1425,8 @@ async function restartGame() {
                     state.chronicleHistory.push(paragraph);
                 }
                 typewriteText(bookPages, paragraph).then(() => {
-                    logGame("event", `<b>Narrative:</b> <i>${paragraph}</i>`);
+                    appendChronicleInline(paragraph);
+                    collapseOldTurns();
                     speakText(paragraph);
                     state.isWriting = false;
                     updateUI(); // Unlock controls!
@@ -1444,20 +1579,57 @@ window.onload = () => {
             
             restoreStoryFunctions(state);
             
-            // Rebuild terminal DOM history
+            // Rebuild terminal DOM history with turn-groups + interleaved chronicle
             const output = document.getElementById("terminal-output");
+            currentTurnGroup = null; // Reset module-level group ref
             if (output) {
                 output.innerHTML = "";
+
+                // Group history logs by turn number
+                const logsByTurn = {};
                 state.history.forEach(log => {
-                    const p = document.createElement("p");
-                    p.className = `log-${log.type}`;
-                    p.innerHTML = log.text;
-                    output.appendChild(p);
+                    // Extract turn number from formatted text like "[Turn 3] ..."
+                    const match = log.text.match(/^\[Turn (\d+)\]/);
+                    const turn = match ? parseInt(match[1]) : 0;
+                    if (!logsByTurn[turn]) logsByTurn[turn] = [];
+                    logsByTurn[turn].push(log);
                 });
+
+                const turnKeys = Object.keys(logsByTurn).map(Number).sort((a, b) => a - b);
+                turnKeys.forEach((turn, idx) => {
+                    const group = document.createElement("div");
+                    group.className = "turn-group";
+                    group.dataset.turn = turn;
+
+                    logsByTurn[turn].forEach(log => {
+                        const p = document.createElement("p");
+                        p.className = `log-${log.type}`;
+                        p.innerHTML = log.text;
+                        group.appendChild(p);
+                    });
+
+                    // Interleave chronicle paragraph if available for this turn index
+                    if (state.chronicleHistory && state.chronicleHistory[idx]) {
+                        const divider = document.createElement("div");
+                        divider.className = "chronicle-divider";
+                        divider.setAttribute("aria-hidden", "true");
+                        divider.innerHTML = "<span>&#10022;</span>";
+                        group.appendChild(divider);
+
+                        const p = document.createElement("p");
+                        p.className = "chronicle-inline";
+                        p.textContent = state.chronicleHistory[idx];
+                        group.appendChild(p);
+                    }
+
+                    output.appendChild(group);
+                });
+
+                collapseOldTurns();
                 output.scrollTop = output.scrollHeight;
             }
 
-            // Rebuild chronicle DOM history
+            // Rebuild chronicle DOM history (right-side panel)
             const bookPages = document.getElementById("book-pages");
             if (bookPages) {
                 bookPages.innerHTML = "";
@@ -1523,46 +1695,118 @@ function updateAutoPlayButton() {
     const btn = document.getElementById('autoplay-toggle');
     if (!btn) return;
     if (state.autoPlayEnabled) {
-        btn.textContent = '⏸ Pause';
+        btn.innerHTML = '\u23f8'; // ⏸
         btn.classList.add('active');
+        btn.title = 'Pause AutoPlay';
     } else {
-        btn.textContent = '▶ AutoPlay';
+        btn.innerHTML = '\u25b6'; // ▶
         btn.classList.remove('active');
+        btn.title = 'AutoPlay';
     }
+}
+
+// --- GENERIC POPOVER CONTROLLER ---
+let _openPopoverId = null;
+
+function openPopover(id) {
+    closeAllPopovers();
+    const popover = document.getElementById(`popover-${id}`);
+    const trigger = document.querySelector(`[data-popover="${id}"], #autoplay-toggle`);
+    if (!popover) return;
+
+    // Position above the trigger button
+    if (trigger) {
+        const rect = trigger.getBoundingClientRect();
+        const barRect = trigger.closest('.action-bar-compact')?.getBoundingClientRect() || rect;
+        popover.style.bottom = `${window.innerHeight - barRect.top + 8}px`;
+        popover.style.left = `${rect.left}px`;
+    }
+    popover.classList.add('open');
+    _openPopoverId = id;
+}
+
+function closeAllPopovers() {
+    document.querySelectorAll('.popover.open').forEach(p => p.classList.remove('open'));
+    _openPopoverId = null;
+}
+
+function togglePopover(id) {
+    if (_openPopoverId === id) {
+        closeAllPopovers();
+    } else {
+        openPopover(id);
+    }
+}
+
+function startAutoPlay() {
+    closeAllPopovers();
+    if (state._autoPlayTimeoutId !== null) {
+        clearTimeout(state._autoPlayTimeoutId);
+        state._autoPlayTimeoutId = null;
+    }
+    state.autoPlayEnabled = true;
+    updateAutoPlayButton();
+    if (!state.isWriting && (state.storyState === 'pending' || state.storyState === 'running')) {
+        logGame('system', '<i>[AutoPlay started — the story will advance automatically. Type anything to intervene.]</i>');
+        state._autoPlayTimeoutId = setTimeout(() => {
+            state._autoPlayTimeoutId = null;
+            tickGame(null);
+        }, 500);
+    }
+}
+
+function stopAutoPlay() {
+    if (state._autoPlayTimeoutId !== null) {
+        clearTimeout(state._autoPlayTimeoutId);
+        state._autoPlayTimeoutId = null;
+    }
+    state.autoPlayEnabled = false;
+    updateAutoPlayButton();
+    logGame('system', '<i>[AutoPlay paused.]</i>');
 }
 
 function initAutoPlayControls() {
     const btn = document.getElementById('autoplay-toggle');
+    const startBtn = document.getElementById('autoplay-start');
     const slider = document.getElementById('autoplay-speed');
     const speedLabel = document.getElementById('autoplay-speed-label');
 
+    // ▶ / ⏸ toggle button: open popover if stopped, stop immediately if running
     if (btn) {
-        btn.addEventListener('click', () => {
-            // Cancel any pending tick before toggling state
-            if (state._autoPlayTimeoutId !== null) {
-                clearTimeout(state._autoPlayTimeoutId);
-                state._autoPlayTimeoutId = null;
-            }
-            state.autoPlayEnabled = !state.autoPlayEnabled;
-            updateAutoPlayButton();
-            if (state.autoPlayEnabled && !state.isWriting && (state.storyState === 'pending' || state.storyState === 'running')) {
-                logGame('system', '<i>[AutoPlay started — the story will advance automatically. Type anything to intervene.]</i>');
-                state._autoPlayTimeoutId = setTimeout(() => {
-                    state._autoPlayTimeoutId = null;
-                    tickGame(null);
-                }, 500); // Short delay so button feedback renders first
-            } else if (!state.autoPlayEnabled) {
-                logGame('system', '<i>[AutoPlay paused.]</i>');
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (state.autoPlayEnabled) {
+                stopAutoPlay();
+            } else {
+                togglePopover('autoplay');
             }
         });
     }
 
+    // "Start AutoPlay" button inside the popover
+    if (startBtn) {
+        startBtn.addEventListener('click', () => startAutoPlay());
+    }
+
+    // Speed slider
     if (slider && speedLabel) {
         slider.addEventListener('input', () => {
             state.autoPlayIntervalMs = parseInt(slider.value, 10);
             speedLabel.textContent = `${(state.autoPlayIntervalMs / 1000).toFixed(1)}s`;
         });
     }
+
+    // Dismiss popover on outside click or Escape
+    document.addEventListener('click', (e) => {
+        if (_openPopoverId && !e.target.closest('.popover') && !e.target.closest('#autoplay-toggle')) {
+            closeAllPopovers();
+        }
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && _openPopoverId) {
+            closeAllPopovers();
+        }
+    });
 }
 
 function renderDecisionModal(decision) {

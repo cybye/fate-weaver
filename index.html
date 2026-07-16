@@ -47,21 +47,36 @@
                 <div class="terminal-output" id="terminal-output">
                     <!-- Logs will be appended here -->
                 </div>
-                <div class="action-bar">
-                    <div class="autoplay-controls">
-                        <button id="autoplay-toggle" class="btn btn-autoplay" title="Let the story advance automatically">&#9654; AutoPlay</button>
-                        <div class="autoplay-speed-row">
-                            <label for="autoplay-speed" class="autoplay-speed-label">Speed</label>
+                <!-- AutoPlay Popover (anchored above ▶ button) -->
+                <div class="popover" id="popover-autoplay" role="dialog" aria-label="AutoPlay settings">
+                    <div class="popover-header">&#9654; AutoPlay</div>
+                    <div class="popover-body">
+                        <div class="popover-speed-row">
+                            <label for="autoplay-speed" class="popover-speed-label">Speed</label>
                             <input type="range" id="autoplay-speed" min="1000" max="10000" step="500" value="4000" class="autoplay-slider">
                             <span id="autoplay-speed-label" class="autoplay-speed-value">4.0s</span>
                         </div>
                     </div>
-                    <div class="action-buttons" id="action-buttons">
-                        <!-- Dynamic buttons will appear here -->
+                    <button id="autoplay-start" class="popover-action">&#9654; Start AutoPlay</button>
+                </div>
+
+                <!-- Compact Tape-Recorder Action Bar -->
+                <div class="action-bar-compact">
+                    <!-- AutoPlay toggle (opens popover when stopped, stops immediately when running) -->
+                    <button id="autoplay-toggle" class="btn-compact btn-autoplay-icon" title="AutoPlay">&#9654;</button>
+
+                    <!-- Direction shortcuts (dynamic, filled by updateUI) -->
+                    <div class="dir-buttons" id="dir-buttons"></div>
+
+                    <!-- Action shortcuts -->
+                    <div class="action-shortcut-buttons" id="action-buttons">
+                        <!-- Dynamic action buttons appear here -->
                     </div>
+
+                    <!-- Text input -->
                     <form id="command-form" class="command-form">
                         <span class="prompt">&gt;</span>
-                        <input type="text" id="command-input" placeholder="Type a command (e.g., 'go square', 'wait', 'look')..." autocomplete="off">
+                        <input type="text" id="command-input" placeholder="Command..." autocomplete="off">
                     </form>
                 </div>
             </section>

@@ -273,18 +273,114 @@ body {
 }
 
 
-.action-bar {
-    padding: 16px 20px;
-    border-top: 1px solid var(--border-color);
-    background: rgba(0, 0, 0, 0.1);
-}
+/* =====================================================
+   COMPACT TAPE-RECORDER INPUT BAR
+   ===================================================== */
 
-.action-buttons {
+.action-bar-compact {
     display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--border-color);
+    background: rgba(0, 0, 0, 0.12);
+    flex-wrap: nowrap;
+    overflow: hidden;
 }
 
+.dir-buttons {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.action-shortcut-buttons {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+/* Compact buttons: directions + actions */
+.btn-compact {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 0 10px;
+    height: 30px;
+    border-radius: 6px;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.btn-compact:hover:not(:disabled) {
+    background: var(--accent-blue-glow);
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+    box-shadow: 0 0 8px var(--accent-blue-glow);
+}
+
+.btn-compact:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+/* Direction buttons: slightly smaller, accent amber */
+.btn-compact.btn-dir {
+    height: 28px;
+    padding: 0 8px;
+    border-color: rgba(245, 158, 11, 0.2);
+    color: var(--accent-amber);
+    font-size: 0.68rem;
+}
+
+.btn-compact.btn-dir:hover:not(:disabled) {
+    background: var(--accent-amber-glow);
+    border-color: var(--accent-amber);
+    color: var(--accent-amber);
+    box-shadow: 0 0 8px var(--accent-amber-glow);
+}
+
+/* Action buttons: Talk / Look / Wait */
+.btn-compact.btn-action {
+    height: 28px;
+    font-size: 0.70rem;
+    color: var(--text-secondary);
+}
+
+/* AutoPlay icon button */
+.btn-autoplay-icon {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border-color: rgba(56, 189, 248, 0.25);
+    color: var(--accent-blue);
+    background: rgba(56, 189, 248, 0.06);
+}
+
+.btn-autoplay-icon:hover {
+    background: rgba(56, 189, 248, 0.14);
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 10px var(--accent-blue-glow);
+}
+
+.btn-autoplay-icon.active {
+    background: rgba(56, 189, 248, 0.18);
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 14px var(--accent-blue-glow);
+    color: #fff;
+}
+
+/* Legacy .btn kept for any remaining references */
 .btn {
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--border-color);
@@ -308,6 +404,177 @@ body {
     opacity: 0.4;
     cursor: not-allowed;
 }
+
+/* =====================================================
+   OVERLAY POPOVERS
+   ===================================================== */
+
+.popover {
+    position: fixed;
+    z-index: 8000;
+    min-width: 220px;
+    background: rgba(13, 20, 35, 0.97);
+    border: 1px solid rgba(56, 189, 248, 0.28);
+    border-radius: 10px;
+    box-shadow:
+        0 0 30px rgba(56, 189, 248, 0.1),
+        0 12px 32px rgba(0, 0, 0, 0.6);
+    padding: 0;
+    overflow: hidden;
+    /* Hidden by default */
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.92) translateY(6px);
+    transform-origin: bottom left;
+    transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.popover.open {
+    opacity: 1;
+    pointer-events: all;
+    transform: scale(1) translateY(0);
+}
+
+.popover-header {
+    padding: 10px 14px 8px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--accent-blue);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(56, 189, 248, 0.04);
+}
+
+.popover-body {
+    padding: 12px 14px;
+}
+
+.popover-speed-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.popover-speed-label {
+    font-size: 0.70rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.popover-action {
+    display: block;
+    width: 100%;
+    padding: 9px 14px;
+    background: rgba(56, 189, 248, 0.1);
+    border: none;
+    border-top: 1px solid rgba(56, 189, 248, 0.15);
+    color: var(--accent-blue);
+    font-family: 'Inter', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+    text-align: center;
+}
+
+.popover-action:hover {
+    background: rgba(56, 189, 248, 0.2);
+    color: #fff;
+}
+
+/* =====================================================
+   INTERLEAVED CHRONICLE IN GAME CHANNEL
+   ===================================================== */
+
+/* Container for all log lines + chronicle of one turn */
+.turn-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-bottom: 4px;
+}
+
+/* Ornamental divider between log lines and chronicle prose */
+.chronicle-divider {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 8px 0 4px;
+    color: rgba(180, 140, 80, 0.35);
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    text-align: center;
+    justify-content: center;
+}
+
+.chronicle-divider::before,
+.chronicle-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(180, 140, 80, 0.25), transparent);
+    margin: 0 10px;
+}
+
+/* The chronicle prose paragraph rendered inline */
+.chronicle-inline {
+    font-family: 'Lora', 'Georgia', serif;
+    font-size: 0.9rem;
+    line-height: 1.85;
+    color: #9c7c4a;
+    font-style: italic;
+    padding: 8px 14px 10px;
+    margin: 0;
+    background: rgba(180, 140, 80, 0.04);
+    border-left: 2px solid rgba(180, 140, 80, 0.2);
+    border-radius: 0 4px 4px 0;
+    animation: fadeInParagraph 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* =====================================================
+   COLLAPSIBLE TURN HISTORY
+   ===================================================== */
+
+.collapsed-history {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow: hidden;
+}
+
+/* The child turn-groups are hidden when collapsed */
+.collapsed-history > .turn-group {
+    display: none;
+}
+
+/* Show them when expanded */
+.collapsed-history.expanded > .turn-group {
+    display: flex;
+}
+
+/* The "⋯ N earlier turns ⋯" toggle button */
+.collapse-toggle {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.2);
+    font-family: 'Fira Code', monospace;
+    font-size: 0.70rem;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    padding: 6px 0;
+    text-align: center;
+    width: 100%;
+    transition: color 0.15s ease;
+}
+
+.collapse-toggle:hover {
+    color: rgba(180, 140, 80, 0.6);
+}
+
+
 
 /* Map panel */
 .map-panel {
@@ -977,42 +1244,10 @@ body {
 }
 
 /* ===================================================
-   AUTOPLAY CONTROLS
+   AUTOPLAY CONTROLS (slider / speed value shared with popover)
    =================================================== */
 
-.autoplay-controls {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--border-color);
-    background: rgba(56, 189, 248, 0.03);
-}
 
-.btn-autoplay {
-    background: rgba(56, 189, 248, 0.08);
-    border: 1px solid rgba(56, 189, 248, 0.25);
-    color: var(--accent-blue);
-    font-size: 0.8rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    padding: 5px 14px;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: background 0.2s, box-shadow 0.2s, border-color 0.2s;
-    white-space: nowrap;
-    flex-shrink: 0;
-}
-.btn-autoplay:hover {
-    background: rgba(56, 189, 248, 0.16);
-    box-shadow: 0 0 12px rgba(56, 189, 248, 0.2);
-}
-.btn-autoplay.active {
-    background: rgba(56, 189, 248, 0.18);
-    border-color: var(--accent-blue);
-    box-shadow: 0 0 16px rgba(56, 189, 248, 0.3);
-    color: #fff;
-}
 
 .autoplay-speed-row {
     display: flex;
