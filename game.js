@@ -145,22 +145,25 @@ function makeLogsCollapsible(turnGroup) {
     const wrapper = document.createElement("div");
     wrapper.className = "turn-logs-collapsible collapsed";
 
-    const header = document.createElement("div");
-    header.className = "turn-logs-header";
-    header.innerHTML = `<span>⚙ Stage Directions</span> <span class="toggle-icon">▶</span>`;
-    header.onclick = () => {
+    // Tiny button to toggle logs
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "turn-logs-toggle-tiny";
+    toggleBtn.textContent = "...";
+    toggleBtn.title = "Show stage directions / game logs";
+    toggleBtn.onclick = () => {
         wrapper.classList.toggle("collapsed");
-        header.querySelector(".toggle-icon").textContent = wrapper.classList.contains("collapsed") ? "▶" : "▼";
+        toggleBtn.classList.toggle("active");
     };
 
-    // Insert wrapper before first log element
+    // Insert toggleBtn before first log element
     const parent = turnGroup;
-    parent.insertBefore(header, logElements[0]);
+    parent.insertBefore(toggleBtn, logElements[0]);
     parent.insertBefore(wrapper, logElements[0]);
 
     // Move logs into the wrapper
     logElements.forEach(el => wrapper.appendChild(el));
 }
+
 
 
 

@@ -321,14 +321,15 @@ body {
 
 .action-bar-compact {
     display: flex;
+    flex-wrap: wrap;       /* Allows wrapping to multiple lines */
     align-items: center;
-    gap: 6px;
-    padding: 8px 14px;
+    gap: 8px 12px;
+    padding: 8px 14px 12px;
     border-top: 1px solid var(--border-color);
     background: rgba(0, 0, 0, 0.12);
-    flex-wrap: nowrap;
     overflow: hidden;
 }
+
 
 .dir-buttons {
     display: flex;
@@ -914,13 +915,42 @@ body {
 .command-form {
     display: flex;
     align-items: center;
-    margin-top: 14px;
+    margin-top: 0;         /* Replaced margin with flex-wrap gap */
+    width: 100%;           /* Force to span full width on a new line */
     background: rgba(0, 0, 0, 0.3);
     border: 1px solid var(--border-color);
     border-radius: 8px;
     padding: 8px 14px;
     gap: 10px;
 }
+
+/* Tiny toggle button style for stage directions */
+.turn-logs-toggle-tiny {
+    background: rgba(180, 140, 80, 0.1);
+    border: 1px solid rgba(180, 140, 80, 0.25);
+    color: #857f72;
+    padding: 2px 8px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    border-radius: 4px;
+    cursor: pointer;
+    line-height: 1;
+    margin: 6px 0;
+    transition: all 0.15s;
+    width: max-content;
+}
+
+.turn-logs-toggle-tiny:hover {
+    background: rgba(180, 140, 80, 0.2);
+    color: #1c1917;
+}
+
+.turn-logs-toggle-tiny.active {
+    background: rgba(180, 140, 80, 0.3);
+    border-color: rgba(180, 140, 80, 0.5);
+    color: #1c1917;
+}
+
 
 .command-form:focus-within {
     border-color: var(--accent-blue);
