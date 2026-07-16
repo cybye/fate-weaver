@@ -231,14 +231,10 @@ body {
 
 /* Each turn's block of logs + chronicle paragraph */
 .turn-group {
-    padding-bottom: 16px;
-    margin-bottom: 8px;
-    border-bottom: 1px solid rgba(180, 140, 80, 0.12);
+    padding-bottom: 4px;
+    margin-bottom: 4px;
 }
 
-.turn-group:last-child {
-    border-bottom: none;
-}
 
 .turn-group > p {
     margin-bottom: 3px;

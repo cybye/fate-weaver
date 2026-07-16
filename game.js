@@ -140,6 +140,7 @@ function appendChronicleInline(paragraph) {
 // Wraps any logs inside the turn-group into a collapsible container
 function makeLogsCollapsible(turnGroup) {
     const logElements = Array.from(turnGroup.querySelectorAll("p:not(.chronicle-inline)"));
+    const dividerElement = turnGroup.querySelector(".chronicle-divider");
     if (logElements.length === 0) return;
 
     const wrapper = document.createElement("div");
@@ -162,7 +163,13 @@ function makeLogsCollapsible(turnGroup) {
 
     // Move logs into the wrapper
     logElements.forEach(el => wrapper.appendChild(el));
+
+    // Move chronicle-divider into the wrapper at the bottom if it exists
+    if (dividerElement) {
+        wrapper.appendChild(dividerElement);
+    }
 }
+
 
 
 
