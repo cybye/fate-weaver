@@ -163,6 +163,14 @@ export function typewriteText(element, text, speed = 20) {
         let textSpan, cursorSpan;
         if (isLeaf) {
             // Type directly into the inline paragraph
+            if (element.classList.contains("first-paragraph")) {
+                const firstChar = text.charAt(0);
+                const dropCapSpan = document.createElement("span");
+                dropCapSpan.className = "drop-cap";
+                dropCapSpan.textContent = firstChar;
+                element.appendChild(dropCapSpan);
+                text = text.substring(1);
+            }
             textSpan = document.createElement("span");
             cursorSpan = document.createElement("span");
             cursorSpan.className = "typewriter-cursor";

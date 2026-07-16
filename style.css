@@ -555,21 +555,87 @@ body {
     margin: 0 10px;
 }
 
-/* The chronicle prose paragraph rendered inline — primary reading surface */
+/* The chronicle prose paragraph rendered inline — primary reading surface (main book style) */
 .chronicle-inline {
     font-family: 'Lora', 'Georgia', serif;
-    font-size: 0.97rem;
-    line-height: 1.95;
-    color: #5a3e1e;          /* rich warm sepia */
-    font-style: italic;
-    padding: 14px 18px 16px;
-    margin: 10px 0 4px;
-    background: rgba(160, 120, 60, 0.05);
-    border-left: 3px solid rgba(160, 120, 60, 0.3);
-    border-radius: 0 6px 6px 0;
+    font-size: 1.05rem;
+    line-height: 1.85;
+    color: #1c1917;          /* Rich soft black */
+    font-style: normal;      /* Non-italic, like a real book */
+    padding: 8px 0;
+    margin: 14px 0 8px;
+    background: none;
+    border-left: none;
+    border-radius: 0;
     text-align: justify;
+    text-indent: 28px;
+    position: relative;
     animation: fadeInParagraph 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+.chronicle-inline.first-paragraph {
+    text-indent: 0;
+}
+
+/* =====================================================
+   COLLAPSIBLE GAME LOGS (STAGE DIRECTIONS)
+   ===================================================== */
+
+.turn-logs-header {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #857f72;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    margin-bottom: 4px;
+    width: max-content;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(180, 140, 80, 0.06);
+    border: 1px dashed rgba(180, 140, 80, 0.15);
+    transition: background 0.15s;
+}
+
+.turn-logs-header:hover {
+    background: rgba(180, 140, 80, 0.12);
+}
+
+.turn-logs-header .toggle-icon {
+    font-size: 0.55rem;
+}
+
+.turn-logs-collapsible {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    background: rgba(180, 140, 80, 0.03);
+    border-left: 2px dashed rgba(180, 140, 80, 0.15);
+    border-radius: 0 4px 4px 0;
+    overflow: hidden;
+    transition: max-height 0.25s ease-out, opacity 0.2s;
+    max-height: 1000px;
+    opacity: 1;
+}
+
+.turn-logs-collapsible.collapsed {
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-bottom: 0;
+    opacity: 0;
+    pointer-events: none;
+    border-left-color: transparent;
+}
+
 
 /* =====================================================
    COLLAPSIBLE TURN HISTORY

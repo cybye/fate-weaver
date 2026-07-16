@@ -106,17 +106,28 @@ function appendChronicleInline(paragraph) {
     if (!currentTurnGroup) return null;
     const output = document.getElementById("terminal-output");
 
-    // Ornamental divider
-    const divider = document.createElement("div");
-    divider.className = "chronicle-divider";
-    divider.setAttribute("aria-hidden", "true");
-    divider.innerHTML = "<span>&#10022;</span>";
-    currentTurnGroup.appendChild(divider);
+    // Retrieve index of chronicle paragraphs
+    const isFirstParagraph = !state.chronicleHistory || state.chronicleHistory.length <= 1;
+
+    // Ornamental divider (only if not first)
+    if (!isFirstParagraph) {
+        const divider = document.createElement("div");
+        divider.className = "chronicle-divider";
+        divider.setAttribute("aria-hidden", "true");
+        divider.innerHTML = "<span>&#10022;</span>";
+        currentTurnGroup.appendChild(divider);
+    }
 
     // Prose paragraph — starts empty; typewriteText animates text into it
     const p = document.createElement("p");
     p.className = "chronicle-inline";
+    if (isFirstParagraph) {
+        p.classList.add("first-paragraph");
+    }
     currentTurnGroup.appendChild(p);
+
+    // Make the logs in this turn-group collapsible
+    makeLogsCollapsible(currentTurnGroup);
 
     if (output) output.scrollTop = output.scrollHeight;
 
@@ -125,6 +136,32 @@ function appendChronicleInline(paragraph) {
 
     return p; // Caller will animate text into this element
 }
+
+// Wraps any logs inside the turn-group into a collapsible container
+function makeLogsCollapsible(turnGroup) {
+    const logElements = Array.from(turnGroup.querySelectorAll("p:not(.chronicle-inline)"));
+    if (logElements.length === 0) return;
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "turn-logs-collapsible collapsed";
+
+    const header = document.createElement("div");
+    header.className = "turn-logs-header";
+    header.innerHTML = `<span>⚙ Stage Directions</span> <span class="toggle-icon">▶</span>`;
+    header.onclick = () => {
+        wrapper.classList.toggle("collapsed");
+        header.querySelector(".toggle-icon").textContent = wrapper.classList.contains("collapsed") ? "▶" : "▼";
+    };
+
+    // Insert wrapper before first log element
+    const parent = turnGroup;
+    parent.insertBefore(header, logElements[0]);
+    parent.insertBefore(wrapper, logElements[0]);
+
+    // Move logs into the wrapper
+    logElements.forEach(el => wrapper.appendChild(el));
+}
+
 
 
 // Collapses older turn-groups beyond the VISIBLE_TURN_HISTORY threshold
@@ -1606,18 +1643,25 @@ window.onload = () => {
 
                     // Interleave chronicle paragraph if available for this turn index
                     if (state.chronicleHistory && state.chronicleHistory[idx]) {
-                        const divider = document.createElement("div");
-                        divider.className = "chronicle-divider";
-                        divider.setAttribute("aria-hidden", "true");
-                        divider.innerHTML = "<span>&#10022;</span>";
-                        group.appendChild(divider);
+                        const isFirstParagraph = idx === 0;
+                        if (!isFirstParagraph) {
+                            const divider = document.createElement("div");
+                            divider.className = "chronicle-divider";
+                            divider.setAttribute("aria-hidden", "true");
+                            divider.innerHTML = "<span>&#10022;</span>";
+                            group.appendChild(divider);
+                        }
 
                         const p = document.createElement("p");
                         p.className = "chronicle-inline";
+                        if (isFirstParagraph) {
+                            p.classList.add("first-paragraph");
+                        }
                         p.textContent = state.chronicleHistory[idx];
                         group.appendChild(p);
                     }
 
+                    makeLogsCollapsible(group);
                     output.appendChild(group);
                 });
 
