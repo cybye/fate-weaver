@@ -100,9 +100,10 @@ function logGame(type, text) {
     }
 }
 
-// Appends the chronicle prose paragraph inline into the current turn-group
+// Creates the chronicle prose placeholder inline inside the current turn-group.
+// Returns the <p> element so callers can animate text into it.
 function appendChronicleInline(paragraph) {
-    if (!currentTurnGroup) return;
+    if (!currentTurnGroup) return null;
     const output = document.getElementById("terminal-output");
 
     // Ornamental divider
@@ -112,17 +113,19 @@ function appendChronicleInline(paragraph) {
     divider.innerHTML = "<span>&#10022;</span>";
     currentTurnGroup.appendChild(divider);
 
-    // Prose paragraph
+    // Prose paragraph — starts empty; typewriteText animates text into it
     const p = document.createElement("p");
     p.className = "chronicle-inline";
-    p.textContent = paragraph;
     currentTurnGroup.appendChild(p);
 
     if (output) output.scrollTop = output.scrollHeight;
 
     // Seal the turn group — next logGame() call starts a fresh one
     currentTurnGroup = null;
+
+    return p; // Caller will animate text into this element
 }
+
 
 // Collapses older turn-groups beyond the VISIBLE_TURN_HISTORY threshold
 function collapseOldTurns() {
@@ -420,10 +423,14 @@ async function finalizeAction() {
             if (state.chronicleHistory) {
                 state.chronicleHistory.push(paragraph);
             }
-            // Render into the right-side Chronicle panel
-            await typewriteText(bookPages, paragraph);
-            // Also render inline in the Game Channel
-            appendChronicleInline(paragraph);
+            // Create the inline prose slot and animate text into it
+            const inlineEl = appendChronicleInline(paragraph);
+            if (inlineEl) {
+                await typewriteText(inlineEl, paragraph);
+            } else {
+                // Fallback: silently write to bookPages if group was already sealed
+                await typewriteText(bookPages, paragraph);
+            }
             // Collapse older turns beyond the visible window
             collapseOldTurns();
             speakText(paragraph);
@@ -431,6 +438,7 @@ async function finalizeAction() {
             console.error("Writer error:", err);
         }
     }
+
     state.isWriting = false;
     updateUI(); // Re-enables UI!
 
@@ -1424,12 +1432,13 @@ async function restartGame() {
                 if (state.chronicleHistory) {
                     state.chronicleHistory.push(paragraph);
                 }
-                typewriteText(bookPages, paragraph).then(() => {
-                    appendChronicleInline(paragraph);
+                const inlineEl = appendChronicleInline(paragraph);
+                const animTarget = inlineEl || bookPages;
+                typewriteText(animTarget, paragraph).then(() => {
                     collapseOldTurns();
                     speakText(paragraph);
                     state.isWriting = false;
-                    updateUI(); // Unlock controls!
+                    updateUI();
                 });
             }).catch(err => {
                 console.error("Intro writer error:", err);
@@ -1480,16 +1489,12 @@ function handleCommandInput(event) {
     tickGame(rawInput);
 }
 
-// Collapsible panels init (Accordion behavior)
+// Collapsible panels init — map and director only; book-panel is the primary surface
 function initCollapsiblePanels() {
-    const panelsConfig = [
-        { panelClass: 'map-panel' },
-        { panelClass: 'director-panel' },
-        { panelClass: 'book-panel' }
-    ];
+    const collapsiblePanels = ['map-panel', 'director-panel'];
 
-    panelsConfig.forEach(conf => {
-        const panelEl = document.querySelector(`.${conf.panelClass}`);
+    collapsiblePanels.forEach(panelClass => {
+        const panelEl = document.querySelector(`.${panelClass}`);
         const headerEl = panelEl ? panelEl.querySelector('.panel-header') : null;
         if (panelEl && headerEl) {
             const titleEl = headerEl.querySelector('h2');
@@ -1501,22 +1506,13 @@ function initCollapsiblePanels() {
             }
 
             headerEl.addEventListener('click', () => {
-                const wasCollapsed = panelEl.classList.contains('collapsed');
-                
-                // Collapse all panels first
-                panelsConfig.forEach(c => {
-                    const p = document.querySelector(`.${c.panelClass}`);
-                    if (p) p.classList.add('collapsed');
-                });
-
-                // If this clicked panel was collapsed, expand it
-                if (wasCollapsed) {
-                    panelEl.classList.remove('collapsed');
-                }
+                // Toggle just this panel (independent collapse, not accordion)
+                panelEl.classList.toggle('collapsed');
             });
         }
     });
 }
+
 
 // Narrator voice control init
 function initNarratorToggle() {

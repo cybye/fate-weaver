@@ -36,77 +36,28 @@
             </div>
         </header>
 
-        <!-- Main Workspace -->
+        <!-- Main Workspace: single-column, Chronicle is the primary surface -->
         <main class="app-main">
-            <!-- Left Column: Full-Height Game Terminal -->
-            <section class="panel game-panel">
-                <div class="panel-header">
-                    <h2>Game Channel</h2>
-                    <span class="badge">Live Terminal</span>
-                </div>
-                <div class="terminal-output" id="terminal-output">
-                    <!-- Logs will be appended here -->
-                </div>
-                <!-- AutoPlay Popover (anchored above ▶ button) -->
-                <div class="popover" id="popover-autoplay" role="dialog" aria-label="AutoPlay settings">
-                    <div class="popover-header">&#9654; AutoPlay</div>
-                    <div class="popover-body">
-                        <div class="popover-speed-row">
-                            <label for="autoplay-speed" class="popover-speed-label">Speed</label>
-                            <input type="range" id="autoplay-speed" min="1000" max="10000" step="500" value="4000" class="autoplay-slider">
-                            <span id="autoplay-speed-label" class="autoplay-speed-value">4.0s</span>
-                        </div>
-                    </div>
-                    <button id="autoplay-start" class="popover-action">&#9654; Start AutoPlay</button>
-                </div>
-
-                <!-- Compact Tape-Recorder Action Bar -->
-                <div class="action-bar-compact">
-                    <!-- AutoPlay toggle (opens popover when stopped, stops immediately when running) -->
-                    <button id="autoplay-toggle" class="btn-compact btn-autoplay-icon" title="AutoPlay">&#9654;</button>
-
-                    <!-- Direction shortcuts (dynamic, filled by updateUI) -->
-                    <div class="dir-buttons" id="dir-buttons"></div>
-
-                    <!-- Action shortcuts -->
-                    <div class="action-shortcut-buttons" id="action-buttons">
-                        <!-- Dynamic action buttons appear here -->
-                    </div>
-
-                    <!-- Text input -->
-                    <form id="command-form" class="command-form">
-                        <span class="prompt">&gt;</span>
-                        <input type="text" id="command-input" placeholder="Command..." autocomplete="off">
-                    </form>
-                </div>
-            </section>
-
-            <!-- Right Column: Map, Brain, and Chronicle -->
             <section class="panel-group">
-                <!-- Top: World Map Visualization -->
+                <!-- Collapsible: World Map -->
                 <div class="panel map-panel collapsed">
                     <div class="panel-header">
                         <h2>World Map</h2>
                         <span class="badge secondary">Physics Layer</span>
                     </div>
                     <div class="map-viewport">
-                        <div class="map-connections" id="map-connections">
-                            <!-- Visual lines connecting nodes -->
-                        </div>
-                        <div class="map-nodes" id="map-nodes">
-                            <!-- Map rooms will be rendered here dynamically -->
-                        </div>
+                        <div class="map-connections" id="map-connections"></div>
+                        <div class="map-nodes" id="map-nodes"></div>
                     </div>
                 </div>
 
-                <!-- Middle: Director's Brain (The Hidden Engine) -->
+                <!-- Collapsible: Director's Brain -->
                 <div class="panel director-panel collapsed">
                     <div class="panel-header">
                         <h2>Director's Brain</h2>
                         <span class="badge danger">Hidden Layer</span>
                     </div>
                     <div class="director-dashboard">
-                        <!-- Top Row: Story Progression -->
                         <div class="dashboard-row-progression">
                             <div class="metric objective-metric">
                                 <span class="metric-label">Active Milestone Target</span>
@@ -121,13 +72,9 @@
                             </div>
                             <div class="metric milestones-metric-container">
                                 <span class="metric-label">Story Milestones Progress</span>
-                                <div id="story-milestones-list" class="story-milestones-list-horizontal">
-                                    <!-- Dynamic checklist of milestones -->
-                                </div>
+                                <div id="story-milestones-list" class="story-milestones-list-horizontal"></div>
                             </div>
                         </div>
-
-                        <!-- Bottom Row: Diagnostics -->
                         <div class="dashboard-grid-horizontal">
                             <div class="metric mode-metric">
                                 <span class="metric-label">Engine Mode</span>
@@ -135,36 +82,58 @@
                             </div>
                             <div class="metric utilities-metric">
                                 <span class="metric-label">NPC Utility Monitoring</span>
-                                <div id="actor-utilities-list" class="actor-utilities-list-horizontal">
-                                    <!-- Dynamic NPC desires will be injected here -->
-                                </div>
+                                <div id="actor-utilities-list" class="actor-utilities-list-horizontal"></div>
                             </div>
                             <div class="metric nudges-metric">
-                                <span class="metric-label">Active Nudges & Interventions</span>
-                                <div class="nudges-log" id="nudges-log">
-                                    <!-- Dynamic Director thoughts -->
-                                </div>
+                                <span class="metric-label">Active Nudges &amp; Interventions</span>
+                                <div class="nudges-log" id="nudges-log"></div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Bottom: The Writer's Book Panel (Chronicle) -->
+                <!-- The Chronicle — primary game surface -->
                 <div class="panel book-panel">
-                    <div class="panel-header">
-                        <div style="display: flex; align-items: center; gap: 8px;">
+                    <div class="panel-header book-panel-header">
+                        <div style="display:flex;align-items:center;gap:8px;">
                             <span class="quill-icon" id="quill-icon">🖋️</span>
                             <h2>The Chronicle</h2>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="display:flex;align-items:center;gap:10px;">
                             <button id="tts-toggle" class="btn-icon" title="Toggle Narrator Voice">🔊</button>
                             <span class="badge secondary" id="writer-status">Scribe Idle</span>
                         </div>
                     </div>
+
+                    <!-- Parchment surface: turn-groups (logs + prose) scroll here -->
                     <div class="book-content" id="book-content">
-                        <div class="book-pages" id="book-pages">
-                            <p class="book-placeholder">The pages are blank. Begin the journey to write the chronicle...</p>
+                        <div id="terminal-output"></div>
+                        <!-- Hidden sink kept for typewriteText DOM reference -->
+                        <div id="book-pages" style="display:none"></div>
+                    </div>
+
+                    <!-- AutoPlay Popover (anchored above ▶) -->
+                    <div class="popover" id="popover-autoplay" role="dialog" aria-label="AutoPlay settings">
+                        <div class="popover-header">&#9654; AutoPlay</div>
+                        <div class="popover-body">
+                            <div class="popover-speed-row">
+                                <label for="autoplay-speed" class="popover-speed-label">Speed</label>
+                                <input type="range" id="autoplay-speed" min="1000" max="10000" step="500" value="4000" class="autoplay-slider">
+                                <span id="autoplay-speed-label" class="autoplay-speed-value">4.0s</span>
+                            </div>
                         </div>
+                        <button id="autoplay-start" class="popover-action">&#9654; Start AutoPlay</button>
+                    </div>
+
+                    <!-- Compact Tape-Recorder Input Bar -->
+                    <div class="action-bar-compact">
+                        <button id="autoplay-toggle" class="btn-compact btn-autoplay-icon" title="AutoPlay">&#9654;</button>
+                        <div class="dir-buttons" id="dir-buttons"></div>
+                        <div class="action-shortcut-buttons" id="action-buttons"></div>
+                        <form id="command-form" class="command-form">
+                            <span class="prompt">&gt;</span>
+                            <input type="text" id="command-input" placeholder="Command..." autocomplete="off">
+                        </form>
                     </div>
                 </div>
             </section>

@@ -151,63 +151,65 @@ export function typewriteText(element, text, speed = 20) {
         const quill = document.getElementById("quill-icon");
         const status = document.getElementById("writer-status");
 
-        // Set status to typing
         if (quill) quill.classList.add("writing");
         if (status) {
             status.textContent = "Scribe Writing...";
             status.classList.add("writing-mode");
         }
 
-        // Create a new paragraph container
-        const p = document.createElement("p");
-        p.className = "book-paragraph";
-        
-        // Mark first paragraph differently (for drop cap or custom style)
-        if (element.children.length === 0 || (element.children.length === 1 && element.children[0].classList.contains("book-placeholder"))) {
-            p.classList.add("first-paragraph");
-            
-            // Generate a Drop Cap for the very first letter of the first paragraph!
-            const firstChar = text.charAt(0);
-            const dropCapSpan = document.createElement("span");
-            dropCapSpan.className = "drop-cap";
-            dropCapSpan.textContent = firstChar;
-            p.appendChild(dropCapSpan);
-            
-            // Slice the text to remove the first char
-            text = text.substring(1);
+        // Determine whether element is a leaf <p> (chronicle-inline) or a container
+        const isLeaf = element.tagName === "P";
+
+        let textSpan, cursorSpan;
+        if (isLeaf) {
+            // Type directly into the inline paragraph
+            textSpan = document.createElement("span");
+            cursorSpan = document.createElement("span");
+            cursorSpan.className = "typewriter-cursor";
+            element.appendChild(textSpan);
+            element.appendChild(cursorSpan);
+        } else {
+            // Legacy container mode — create a book-paragraph child
+            const p = document.createElement("p");
+            p.className = "book-paragraph";
+
+            if (element.children.length === 0 || (element.children.length === 1 && element.children[0].classList.contains("book-placeholder"))) {
+                p.classList.add("first-paragraph");
+                const firstChar = text.charAt(0);
+                const dropCapSpan = document.createElement("span");
+                dropCapSpan.className = "drop-cap";
+                dropCapSpan.textContent = firstChar;
+                p.appendChild(dropCapSpan);
+                text = text.substring(1);
+            }
+
+            textSpan = document.createElement("span");
+            p.appendChild(textSpan);
+
+            cursorSpan = document.createElement("span");
+            cursorSpan.className = "typewriter-cursor";
+            p.appendChild(cursorSpan);
+
+            element.appendChild(p);
+
+            const placeholder = element.querySelector(".book-placeholder");
+            if (placeholder) placeholder.remove();
         }
 
-        const textSpan = document.createElement("span");
-        p.appendChild(textSpan);
-
-        const cursorSpan = document.createElement("span");
-        cursorSpan.className = "typewriter-cursor";
-        p.appendChild(cursorSpan);
-
-        element.appendChild(p);
-
-        // Remove placeholder if present
-        const placeholder = element.querySelector(".book-placeholder");
-        if (placeholder) placeholder.remove();
-
         let index = 0;
-        
+
         function typeChar() {
             if (index < text.length) {
                 textSpan.textContent += text.charAt(index);
                 index++;
-                
-                // Keep the book container scrolled to the bottom
-                const bookContent = document.getElementById("book-content");
-                if (bookContent) {
-                    bookContent.scrollTop = bookContent.scrollHeight;
-                }
 
-                // Add slight randomness to typing speed for human feel
+                // Scroll the book-content container (works for both modes)
+                const bookContent = document.getElementById("book-content");
+                if (bookContent) bookContent.scrollTop = bookContent.scrollHeight;
+
                 const randomDelay = speed + (Math.random() * 15 - 5);
                 setTimeout(typeChar, randomDelay);
             } else {
-                // Done writing
                 cursorSpan.remove();
                 if (quill) quill.classList.remove("writing");
                 if (status) {
@@ -221,6 +223,7 @@ export function typewriteText(element, text, speed = 20) {
         typeChar();
     });
 }
+
 
 let isNarratorEnabled = false;
 try {

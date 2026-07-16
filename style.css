@@ -151,21 +151,23 @@ body {
     text-shadow: 0 0 8px rgba(16, 185, 129, 0.2);
 }
 
-/* Layout Main structure */
+/* Layout Main structure — single column; Chronicle is the full surface */
 .app-main {
-    display: grid;
-    grid-template-columns: 1fr 1.2fr;
-    gap: 16px;
+    display: flex;
+    flex-direction: column;
     flex-grow: 1;
     min-height: 0;
 }
 
+
 .panel-group {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
+    flex-grow: 1;
     min-height: 0;
 }
+
 
 /* Panel Design */
 .panel {
@@ -216,58 +218,98 @@ body {
     border-color: rgba(244, 63, 94, 0.2);
 }
 
-/* Left panel (Game Channel Console) */
-.game-panel {
-    flex-grow: 1;
-}
+/* Game panel is removed — Chronicle is the primary surface */
 
-.terminal-output {
-    flex-grow: 1;
-    overflow-y: auto;
-    padding: 20px;
-    font-family: 'Fira Code', monospace;
-    font-size: 0.85rem;
-    line-height: 1.6;
+/* terminal-output lives inside book-content (parchment background)
+   so it must be transparent and inherit the book font */
+#terminal-output {
+    padding: 24px 32px 40px;  /* bottom pad: clear the action bar */
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 0;
 }
 
-.terminal-output p {
-    margin-bottom: 4px;
+/* Each turn's block of logs + chronicle paragraph */
+.turn-group {
+    padding-bottom: 16px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid rgba(180, 140, 80, 0.12);
 }
 
+.turn-group:last-child {
+    border-bottom: none;
+}
+
+.turn-group > p {
+    margin-bottom: 3px;
+}
+
+/* ── Stage direction: system/meta messages ── */
 .log-system {
-    color: var(--text-secondary);
+    font-family: 'Lora', Georgia, serif;
+    font-size: 0.78rem;
+    font-style: italic;
+    color: #a8977e;
+    margin: 2px 0;
+    line-height: 1.5;
+    opacity: 0.85;
 }
 
+/* ── Player action ── */
 .log-player {
-    color: var(--accent-blue);
-    border-left: 2px solid var(--accent-blue);
-    padding-left: 8px;
-}
-
-.log-npc {
-    color: var(--accent-amber);
-    border-left: 2px solid var(--accent-amber);
-    padding-left: 8px;
-}
-
-.log-event {
-    color: var(--accent-green);
-    background: rgba(16, 185, 129, 0.05);
-    padding: 8px 12px;
-    border-radius: 6px;
-}
-
-.log-director-announce {
-    color: var(--accent-red);
-    background: rgba(244, 63, 94, 0.05);
-    padding: 8px 12px;
-    border-radius: 6px;
+    font-family: 'Lora', Georgia, serif;
+    font-size: 0.85rem;
+    color: #3d2b1f;
     font-weight: 600;
+    margin: 4px 0;
+    padding-left: 14px;
+    border-left: 2px solid rgba(120, 80, 40, 0.35);
+    line-height: 1.55;
 }
 
+/* ── NPC speech / action ── */
+.log-npc {
+    font-family: 'Lora', Georgia, serif;
+    font-size: 0.85rem;
+    font-style: italic;
+    color: #5c3d1e;
+    margin: 4px 0;
+    padding-left: 14px;
+    border-left: 2px solid rgba(180, 120, 60, 0.3);
+    line-height: 1.55;
+}
+
+/* ── Story event (milestone, discovery) ── */
+.log-event {
+    font-family: 'Lora', Georgia, serif;
+    font-size: 0.82rem;
+    color: #4a5c35;
+    font-variant: small-caps;
+    letter-spacing: 0.03em;
+    margin: 5px 0;
+    padding: 4px 0 4px 14px;
+    border-left: 2px solid rgba(80, 110, 50, 0.35);
+    background: none;
+    border-radius: 0;
+    line-height: 1.55;
+}
+
+/* ── Director fate-shift announcement ── */
+.log-director-announce {
+    font-family: 'Lora', Georgia, serif;
+    font-size: 0.82rem;
+    font-style: italic;
+    font-weight: 600;
+    color: #6b2e2e;
+    margin: 5px 0;
+    padding: 5px 10px 5px 14px;
+    border-left: 2px solid rgba(160, 60, 60, 0.4);
+    background: rgba(160, 60, 60, 0.04);
+    border-radius: 0 4px 4px 0;
+    line-height: 1.55;
+}
+
+/* ── Omniscient narrator (hidden in the log but woven into prose) ── */
 .log-narrator {
     display: none;
 }
@@ -489,13 +531,7 @@ body {
    INTERLEAVED CHRONICLE IN GAME CHANNEL
    ===================================================== */
 
-/* Container for all log lines + chronicle of one turn */
-.turn-group {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding-bottom: 4px;
-}
+
 
 /* Ornamental divider between log lines and chronicle prose */
 .chronicle-divider {
@@ -519,18 +555,19 @@ body {
     margin: 0 10px;
 }
 
-/* The chronicle prose paragraph rendered inline */
+/* The chronicle prose paragraph rendered inline — primary reading surface */
 .chronicle-inline {
     font-family: 'Lora', 'Georgia', serif;
-    font-size: 0.9rem;
-    line-height: 1.85;
-    color: #9c7c4a;
+    font-size: 0.97rem;
+    line-height: 1.95;
+    color: #5a3e1e;          /* rich warm sepia */
     font-style: italic;
-    padding: 8px 14px 10px;
-    margin: 0;
-    background: rgba(180, 140, 80, 0.04);
-    border-left: 2px solid rgba(180, 140, 80, 0.2);
-    border-radius: 0 4px 4px 0;
+    padding: 14px 18px 16px;
+    margin: 10px 0 4px;
+    background: rgba(160, 120, 60, 0.05);
+    border-left: 3px solid rgba(160, 120, 60, 0.3);
+    border-radius: 0 6px 6px 0;
+    text-align: justify;
     animation: fadeInParagraph 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
@@ -1061,13 +1098,17 @@ body {
 
 /* --- THE CHRONICLE / WRITER PANEL --- */
 .book-panel {
-    flex-grow: 1.8;
+    flex-grow: 1;   /* fill all remaining space in the panel-group */
+    min-height: 0;
     border: 1px solid #d8cea6 !important;
     background: #fdfbf7 !important;
     box-shadow: 
         inset 0 0 30px rgba(0, 0, 0, 0.02),
         0 10px 30px rgba(0, 0, 0, 0.15) !important;
+    /* book-panel also contains the action bar — prevent overflow */
+    overflow: hidden;
 }
+
 
 .book-panel .panel-header {
     background: #221c18 !important;
@@ -1079,7 +1120,7 @@ body {
     font-family: 'Lora', 'Georgia', serif;
 }
 
-/* Collapsible Panels */
+/* Collapsible Panels — all panel headers are clickable except book-panel */
 .panel.collapsed {
     flex-grow: 0 !important;
     flex-shrink: 0 !important;
@@ -1087,12 +1128,13 @@ body {
 .panel.collapsed > *:not(.panel-header) {
     display: none !important;
 }
-.panel:not(.game-panel) .panel-header {
+/* All panel headers except the chronicle are click-to-collapse */
+.panel:not(.book-panel) .panel-header {
     cursor: pointer;
     user-select: none;
     transition: background-color 0.2s ease;
 }
-.panel:not(.game-panel) .panel-header:hover {
+.panel:not(.book-panel) .panel-header:hover {
     background: rgba(255, 255, 255, 0.03);
 }
 .fold-arrow {
@@ -1109,20 +1151,22 @@ body {
 .book-content {
     flex-grow: 1;
     overflow-y: auto;
-    padding: 26px 32px;
+    padding: 0;   /* padding is handled by #terminal-output inside */
     font-family: 'Lora', 'Georgia', serif;
     font-size: 0.94rem;
     line-height: 1.9;
-    color: #1c1917; /* Warm, rich soft black */
+    color: #1c1917;
     position: relative;
-    background-color: #f7f3e8; /* Natural warm paper cream */
+    background-color: #f7f3e8;
     background-image: 
         radial-gradient(at 0% 0%, rgba(255, 255, 255, 0.6) 0px, transparent 70%),
         radial-gradient(at 100% 100%, rgba(220, 205, 175, 0.2) 0px, transparent 65%),
         linear-gradient(to right, rgba(0, 0, 0, 0.04) 0%, transparent 6%, transparent 94%, rgba(0, 0, 0, 0.04) 100%);
     box-shadow: inset 0 0 40px rgba(139, 92, 26, 0.05);
     scrollbar-width: thin;
+    scrollbar-color: rgba(180, 140, 80, 0.3) transparent;
 }
+
 
 .book-pages {
     max-width: 100%;
