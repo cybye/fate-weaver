@@ -1,6 +1,6 @@
 import { AUTOPLAYER_PROMPT_TEMPLATE } from './content.js';
 import { findPath, getNeighbors } from './pathfinding.js';
-import { callOllama } from './ollama.js';
+import { callLLM } from './llm.js';
 
 // --- AUTOPLAYER: Acts as the player-character brain each tick ---
 
@@ -11,7 +11,7 @@ const DEFAULT_MAX_CONVERSATION_ROUNDS = 2;
  * represents the AutoPlayer's chosen action for this turn.
  *
  * @param {object} state   - Full game state
- * @param {boolean} isLLMActive - Whether Ollama is reachable
+ * @param {boolean} isLLMActive - Whether the backend LLM is reachable
  * @returns {Promise<{tool_name: string, arguments: object}>}
  */
 export async function runAutoPlayer(state, isLLMActive) {
@@ -143,7 +143,7 @@ async function runAutoPlayerLLM(state) {
         .replace('"tool_name": "travel" | "converse" | "wait" | "examine"', `"tool_name": ${allowedTools.map(t => `"${t}"`).join(' | ')}`);
 
     const prompt = `Decide your action for this turn.`;
-    const res = await callOllama(prompt, systemPrompt);
+    const res = await callLLM(prompt, systemPrompt, "autoplayer");
 
     if (res?.tool_name) {
         if (res.thought) {

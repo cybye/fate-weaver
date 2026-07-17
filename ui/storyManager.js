@@ -86,6 +86,7 @@ export function restoreStoryFunctions(state) {
             if (stateNode && configNode) {
                 stateNode.convergenceCheck = configNode.convergenceCheck;
                 stateNode.updateObjectives = configNode.updateObjectives;
+                stateNode.onComplete = configNode.onComplete;
                 
                 if (stateNode.decisionPoints && configNode.decisionPoints) {
                     stateNode.decisionPoints.forEach((stateDp, idx) => {

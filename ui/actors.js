@@ -1,5 +1,5 @@
 import { findPath, getNeighbors } from './pathfinding.js';
-import { callOllama } from './ollama.js';
+import { callLLM } from './llm.js';
 import { publishEvent } from './game.js';
 
 // --- SYSTEM EVENT BROADCASTER & PERCEPTION FILTER ---
@@ -116,7 +116,7 @@ export function getFormattedMemories(actor, turn) {
 
 // --- GENERIC ACTOR UPDATE ORCHESTRATION ---
 
-export async function updateActor(actorId, state, logGame, logDirector, isLLMActive) {
+export async function updateActor(actorId, state, logGame, logDirector, isLLMActive, options = {}) {
     const actorDef = state.actors[actorId];
     if (!actorDef) return;
 
@@ -226,26 +226,36 @@ export async function updateActor(actorId, state, logGame, logDirector, isLLMAct
 
     // B. Plan Formulation Phase (LLM or Heuristic Fallback)
     if (isLLMActive && actorDef.promptTemplate) {
+        if (options.deferLLM) {
+            return "needs-llm";
+        }
         try {
-            await runActorLLM(actorId, state, logGame, logDirector);
+            const result = await runActorLLM(actorId, state, logGame, logDirector);
+            applyActorLLMResult(actorId, state, logGame, logDirector, result);
             return;
         } catch (e) {
             console.warn(`LLM failed for actor ${actorId}, falling back to heuristics.`, e);
         }
     }
     
-    // Heuristic Fallback
+    return runActorFallback(actorId, state, logGame, logDirector);
+}
+
+export function runActorFallback(actorId, state, logGame, logDirector) {
+    const actorDef = state.actors[actorId];
+    if (!actorDef) return;
+
     if (typeof actorDef.heuristics === 'function') {
         const neighbors = getNeighbors(actorDef.location, state.blockedConnections);
-        
+
         // Save current location to check if they moved
         const oldLoc = actorDef.location;
 
         const resultText = actorDef.heuristics(
-            actorDef, 
-            state, 
-            neighbors, 
-            (room) => getNeighbors(room, state.blockedConnections), 
+            actorDef,
+            state,
+            neighbors,
+            (room) => getNeighbors(room, state.blockedConnections),
             (start, goal) => findPath(start, goal, state.blockedConnections)
         );
 
@@ -271,7 +281,7 @@ export async function updateActor(actorId, state, logGame, logDirector, isLLMAct
         if (actorDef.id === "sly" && resultText && resultText.includes("THEFT EVENT")) {
             let targetId = "bob";
             if (resultText.includes("you")) targetId = "player";
-            
+
             broadcastEvent(state, {
                 type: "theft",
                 description: `Sly stole the Secret Scroll from ${targetId === "player" ? "the Player" : "Bob"}.`,
@@ -291,7 +301,7 @@ export async function updateActor(actorId, state, logGame, logDirector, isLLMAct
 
 // --- GENERIC LLM PROMPTING ---
 
-async function runActorLLM(actorId, state, logGame, logDirector) {
+export async function runActorLLM(actorId, state, logGame, logDirector) {
     const actor = state.actors[actorId];
     const neighbors = getNeighbors(actor.location, state.blockedConnections);
 
@@ -394,8 +404,17 @@ Adjacent exits you can move to: ${neighbors.join(', ')}.
 
 Decide your action.`;
 
-    const res = await callOllama(prompt, systemPrompt);
-    
+    const res = await callLLM(prompt, systemPrompt, "npc_action");
+    return { actorId, res };
+}
+
+export function applyActorLLMResult(actorId, state, logGame, logDirector, payload) {
+    const actor = state.actors[actorId];
+    if (!actor || !payload || !payload.res) return;
+    const neighbors = getNeighbors(actor.location, state.blockedConnections);
+
+    const res = payload.res;
+
     if (res.thought) {
         logGame("npc", `<i>${actor.name}'s Thought: "${res.thought}"</i>`);
     }
@@ -403,7 +422,7 @@ Decide your action.`;
     // Process Theft actions generically
     if (res.steal_attempt && res.steal_attempt !== "none") {
         const targetId = res.steal_attempt;
-        
+
         // Count all characters in the room (including player and Sly)
         const peopleInRoom = Object.values(state.actors).filter(a => a.location === actor.location).length + (state.playerLocation === actor.location ? 1 : 0);
         if (peopleInRoom > 2) {
@@ -411,12 +430,12 @@ Decide your action.`;
         } else if (targetId === "player" && actor.location === state.playerLocation) {
             const hasScroll = state.playerInventory && state.playerInventory.includes("Secret Scroll");
             const hasMessage = state.playerInventory && state.playerInventory.includes("Deciphered Message");
-            
+
             if (hasScroll || hasMessage) {
                 const stolenItem = hasScroll ? "Secret Scroll" : "Deciphered Message";
                 state.playerInventory = state.playerInventory.filter(i => i !== stolenItem);
                 actor.inventory.push(stolenItem);
-                
+
                 broadcastEvent(state, {
                     type: "theft",
                     description: `${actor.name} stole the ${stolenItem} from the Player.`,
@@ -446,7 +465,7 @@ Decide your action.`;
             if (targetActor.inventory.includes("Secret Scroll")) {
                 targetActor.inventory = targetActor.inventory.filter(i => i !== "Secret Scroll");
                 actor.inventory.push("Secret Scroll");
-                
+
                 broadcastEvent(state, {
                     type: "theft",
                     description: `${actor.name} stole the Secret Scroll from ${targetActor.name}.`,
@@ -478,7 +497,7 @@ Decide your action.`;
     if (typeof rawSteps === "string") {
         try {
             rawSteps = JSON.parse(rawSteps);
-        } catch(e) {
+        } catch (e) {
             rawSteps = [rawSteps];
         }
     }
@@ -538,7 +557,7 @@ Decide your action.`;
         if (typeof lastStep === "string" && lastStep.startsWith("go_")) {
             endTarget = lastStep.split("_")[1];
         }
-        
+
         // Ensure endTarget is valid room key
         if (!state.storyRooms[endTarget]) {
             endTarget = actor.location;
@@ -570,7 +589,7 @@ Decide your action.`;
             const dest = nextAction.split("_")[1];
             if (neighbors.includes(dest)) {
                 actor.location = dest;
-                
+
                 if (state.followingActorId === actor.id) {
                     state.playerLocation = dest;
                     logGame("system", `You follow ${actor.name} to the ${state.storyRooms[dest].name}.`);
@@ -583,7 +602,7 @@ Decide your action.`;
                     originActorId: actor.id
                 }, logGame);
                 logGame("npc", `<i>[Plan Execution] ${actor.name} moves to the ${state.storyRooms[dest].name}. (Remaining steps: ${actor.activePlan.join(" -> ") || "None"})</i>`);
-                
+
                 // Publish actor_entered event for Pub/Sub
                 publishEvent(state, {
                     topic: "actor_entered",

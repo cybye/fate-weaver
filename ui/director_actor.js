@@ -11,9 +11,13 @@ Actors in this story:
 Your job is to nudge characters, block paths, or trigger mutations (e.g. teleporting, transferring items) to ensure story convergence toward the target goal before the time limit is reached.
 If remaining turns are low and progress is stalled, schedule high-intensity mutations (like teleporting actors or items).
 
+Special Intervention Levels:
+- "Strong Nudges": Restrict options, block exits, move actors toward the player or target location.
+- "Creative Fate Correction": The player is completely stuck or has ran out of time. You MUST force convergence by executing hard state changes (e.g., move_actor player directly to destination, transfer_item key item directly to player, or forcefully teleport key actors). Combine this with a creative narrative justification in nudgeDescription (e.g., "A roaring fire forces everyone out of the tavern into the square...", "A guardsman arrests you and drags you to the Castle Gates...", "Bob drops the scroll in fear and runs away...").
+
 Output EXACTLY this JSON:
 {
-  "mode": "Passive Monitor" | "Soft Nudges" | "Medium Nudges" | "Strong Nudges",
+  "mode": "Passive Monitor" | "Soft Nudges" | "Medium Nudges" | "Strong Nudges" | "Creative Fate Correction",
   "nudgeDescription": "Narration log of fate shifts or events you trigger (e.g. 'A sudden mist guides you...'). Keep empty if none.",
   "mutations": [
      // Array of immediate state mutations to execute. Keep empty if none.

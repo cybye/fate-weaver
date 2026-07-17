@@ -1,11 +1,11 @@
-import { callOllama } from './ollama.js';
+import { callLLM } from './llm.js';
 import { WRITER_PROMPT_TEMPLATE } from './content.js';
 
 /**
  * Runs the Writer layer to generate a literary storybook paragraph for the current turn.
  * @param {Object} state - The current game state.
  * @param {Array} turnLogs - The logs captured during the current turn.
- * @param {boolean} isLLMActive - Whether the Ollama service is active.
+ * @param {boolean} isLLMActive - Whether the backend LLM service is active.
  * @returns {Promise<string>} The novelized paragraph.
  */
 export async function runWriter(state, turnLogs, isLLMActive) {
@@ -51,11 +51,14 @@ export async function runWriter(state, turnLogs, isLLMActive) {
         ? historyWindow.join('\n\n')
         : "(This is the beginning of the story.)";
 
+    const choicesMade = state.decisionsLog ? JSON.stringify(state.decisionsLog) : "None";
+
     const prompt = `Game state context:
 - Player Name: ${state.playerName || "Leo"} (You MUST use this exact name or 'the traveler' when referring to the player. Do NOT invent other names.)
 - Player location: ${state.storyRooms[state.playerLocation].name}
 - Player Inventory: ${JSON.stringify(state.playerInventory)}
 - Active Milestone: ${state.activeMilestoneId}
+- Recent choices/decisions made by player: ${choicesMade}
 
 Actors and their roles in the world:
 ${actorsContext}
@@ -70,7 +73,7 @@ ${logSummary}`;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
             console.log(`[Writer Layer] Attempting chronicle generation (Attempt ${attempt}/${maxAttempts})...`);
-            const result = await callOllama(prompt, WRITER_PROMPT_TEMPLATE);
+            const result = await callLLM(prompt, WRITER_PROMPT_TEMPLATE, "writer");
             if (result) {
                 if (result.paragraph) {
                     return cleanParagraphText(result.paragraph.trim(), state);
@@ -262,7 +265,9 @@ export function isNarratorActive() {
  * Converts text into spoken words using the Web Speech API with dramatic storytelling parameters.
  */
 export function speakText(text) {
-    if (!isNarratorEnabled) return;
+    if (!isNarratorEnabled) {
+        return Promise.resolve();
+    }
 
     // Cancel any currently speaking speech immediately
     window.speechSynthesis.cancel();
@@ -274,29 +279,34 @@ export function speakText(text) {
                           .replace(/&lt;/g, '<')
                           .replace(/&gt;/g, '>');
 
-    const utterance = new SpeechSynthesisUtterance(cleanText);
+    return new Promise((resolve) => {
+        const utterance = new SpeechSynthesisUtterance(cleanText);
 
-    // Get list of voices
-    const voices = window.speechSynthesis.getVoices();
+        // Get list of voices
+        const voices = window.speechSynthesis.getVoices();
 
-    // Try to find a nice narrative voice: en-GB (British storytelling) or en-US
-    let chosenVoice = voices.find(v => v.lang === "en-GB" && v.name.toLowerCase().includes("male"));
-    if (!chosenVoice) chosenVoice = voices.find(v => v.lang === "en-GB");
-    if (!chosenVoice) chosenVoice = voices.find(v => v.lang === "en-US" && v.name.toLowerCase().includes("male") && v.name.toLowerCase().includes("natural"));
-    if (!chosenVoice) chosenVoice = voices.find(v => v.lang === "en-US" && v.name.toLowerCase().includes("male"));
-    if (!chosenVoice) chosenVoice = voices.find(v => v.lang.startsWith("en"));
-    if (!chosenVoice) chosenVoice = voices[0];
+        // Try to find a nice narrative voice: en-GB (British storytelling) or en-US
+        let chosenVoice = voices.find(v => v.lang === "en-GB" && v.name.toLowerCase().includes("male"));
+        if (!chosenVoice) chosenVoice = voices.find(v => v.lang === "en-GB");
+        if (!chosenVoice) chosenVoice = voices.find(v => v.lang === "en-US" && v.name.toLowerCase().includes("male") && v.name.toLowerCase().includes("natural"));
+        if (!chosenVoice) chosenVoice = voices.find(v => v.lang === "en-US" && v.name.toLowerCase().includes("male"));
+        if (!chosenVoice) chosenVoice = voices.find(v => v.lang.startsWith("en"));
+        if (!chosenVoice) chosenVoice = voices[0];
 
-    if (chosenVoice) {
-        utterance.voice = chosenVoice;
-    }
+        if (chosenVoice) {
+            utterance.voice = chosenVoice;
+        }
 
-    // Set dramatic storyteller properties: slightly slower, slightly lower pitch
-    utterance.rate = 0.88;
-    utterance.pitch = 0.90;
-    utterance.volume = 1.0;
+        // Set dramatic storyteller properties: slightly slower, slightly lower pitch
+        utterance.rate = 0.88;
+        utterance.pitch = 0.90;
+        utterance.volume = 1.0;
 
-    window.speechSynthesis.speak(utterance);
+        utterance.onend = () => resolve();
+        utterance.onerror = () => resolve();
+
+        window.speechSynthesis.speak(utterance);
+    });
 }
 
 

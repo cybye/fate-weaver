@@ -9,13 +9,14 @@
 </head>
 <body>
     <div class="app-container">
-        <!-- Header -->
+        <!-- Main App Header -->
         <header class="app-header">
             <div class="logo">
                 <span class="pulse-dot"></span>
                 <h1>FATE WEAVER</h1>
                 <span class="subtitle">Narrative Engine Prototype</span>
             </div>
+            
             <div class="story-selector-container" style="margin-left: 24px; margin-right: auto; display: flex; flex-direction: column; justify-content: center;">
                 <label for="story-select" style="font-size: 0.7rem; color: #a7a29f; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 3px; font-weight: 600;">Active Chronicle</label>
                 <select id="story-select" style="background: #1c1917; border: 1px solid #44403c; color: #f7f3e8; border-radius: 4px; padding: 6px 12px; font-family: 'Lora', serif; font-size: 0.85rem; cursor: pointer; outline: none; transition: border-color 0.2s;">
@@ -23,8 +24,8 @@
                     <option value="alchemist_elixir">Chapter 2: The Alchemist's Elixir</option>
                 </select>
             </div>
+            
             <div class="header-stats">
-
                 <div class="stat-box">
                     <span class="stat-label">Turn</span>
                     <span id="turn-counter" class="stat-value">0</span>
@@ -36,62 +37,9 @@
             </div>
         </header>
 
-        <!-- Main Workspace: single-column, Chronicle is the primary surface -->
+        <!-- Main Workspace -->
         <main class="app-main">
             <section class="panel-group">
-                <!-- Collapsible: World Map -->
-                <div class="panel map-panel collapsed">
-                    <div class="panel-header">
-                        <h2>World Map</h2>
-                        <span class="badge secondary">Physics Layer</span>
-                    </div>
-                    <div class="map-viewport">
-                        <div class="map-connections" id="map-connections"></div>
-                        <div class="map-nodes" id="map-nodes"></div>
-                    </div>
-                </div>
-
-                <!-- Collapsible: Director's Brain -->
-                <div class="panel director-panel collapsed">
-                    <div class="panel-header">
-                        <h2>Director's Brain</h2>
-                        <span class="badge danger">Hidden Layer</span>
-                    </div>
-                    <div class="director-dashboard">
-                        <div class="dashboard-row-progression">
-                            <div class="metric objective-metric">
-                                <span class="metric-label">Active Milestone Target</span>
-                                <div class="milestone-display-horizontal">
-                                    <div class="metric-value text-glow" id="active-milestone-title">Loading Milestone...</div>
-                                    <p class="milestone-desc" id="active-milestone-desc">Calculating story objectives...</p>
-                                </div>
-                                <div class="hud-stats-row-horizontal">
-                                    <span><strong>Path Distance:</strong> <span id="actor-distance">N/A</span></span>
-                                    <span style="margin-left: 20px;"><strong>Player Inventory:</strong> <span id="player-inventory" style="color: #fbbf24; font-family: 'Fira Code', monospace;">None</span></span>
-                                </div>
-                            </div>
-                            <div class="metric milestones-metric-container">
-                                <span class="metric-label">Story Milestones Progress</span>
-                                <div id="story-milestones-list" class="story-milestones-list-horizontal"></div>
-                            </div>
-                        </div>
-                        <div class="dashboard-grid-horizontal">
-                            <div class="metric mode-metric">
-                                <span class="metric-label">Engine Mode</span>
-                                <span class="metric-value" id="director-mode">Passive Monitor</span>
-                            </div>
-                            <div class="metric utilities-metric">
-                                <span class="metric-label">NPC Utility Monitoring</span>
-                                <div id="actor-utilities-list" class="actor-utilities-list-horizontal"></div>
-                            </div>
-                            <div class="metric nudges-metric">
-                                <span class="metric-label">Active Nudges &amp; Interventions</span>
-                                <div class="nudges-log" id="nudges-log"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- The Chronicle — primary game surface -->
                 <div class="panel book-panel">
                     <div class="panel-header book-panel-header">
@@ -99,7 +47,10 @@
                             <span class="quill-icon" id="quill-icon">🖋️</span>
                             <h2>The Chronicle</h2>
                         </div>
-                        <div style="display:flex;align-items:center;gap:10px;">
+                        <div style="display:flex;align-items:center;gap:12px;">
+                            <!-- Header overlay buttons -->
+                            <button id="map-overlay-toggle" class="btn-icon header-overlay-btn" title="Toggle World Map">🗺️ Map</button>
+                            <button id="brain-overlay-toggle" class="btn-icon header-overlay-btn" title="Toggle Director's Brain">🧠 Brain</button>
                             <button id="tts-toggle" class="btn-icon" title="Toggle Narrator Voice">🔊</button>
                             <span class="badge secondary" id="writer-status">Scribe Idle</span>
                         </div>
@@ -110,6 +61,57 @@
                         <div id="terminal-output"></div>
                         <!-- Hidden sink kept for typewriteText DOM reference -->
                         <div id="book-pages" style="display:none"></div>
+                    </div>
+
+                    <!-- Popover: World Map -->
+                    <div class="popover header-popover" id="popover-map" role="dialog" aria-label="World Map">
+                        <div class="popover-header">🗺️ World Map</div>
+                        <div class="popover-body map-viewport-container">
+                            <div class="map-viewport">
+                                <div class="map-connections" id="map-connections"></div>
+                                <div class="map-nodes" id="map-nodes"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Popover: Director's Brain -->
+                    <div class="popover header-popover" id="popover-brain" role="dialog" aria-label="Director's Brain">
+                        <div class="popover-header">🧠 Director's Brain</div>
+                        <div class="popover-body">
+                            <div class="director-dashboard">
+                                <div class="dashboard-row-progression">
+                                    <div class="metric objective-metric">
+                                        <span class="metric-label">Active Milestone Target</span>
+                                        <div class="milestone-display-horizontal">
+                                            <div class="metric-value text-glow" id="active-milestone-title">Loading Milestone...</div>
+                                            <p class="milestone-desc" id="active-milestone-desc">Calculating story objectives...</p>
+                                        </div>
+                                        <div class="hud-stats-row-horizontal">
+                                            <span><strong>Path Distance:</strong> <span id="actor-distance">N/A</span></span>
+                                            <span style="margin-left: 20px;"><strong>Player Inventory:</strong> <span id="player-inventory" style="color: #fbbf24; font-family: 'Fira Code', monospace;">None</span></span>
+                                        </div>
+                                    </div>
+                                    <div class="metric milestones-metric-container">
+                                        <span class="metric-label">Story Milestones Progress</span>
+                                        <div id="story-milestones-list" class="story-milestones-list-horizontal"></div>
+                                    </div>
+                                </div>
+                                <div class="dashboard-grid-horizontal" style="margin-top: 10px;">
+                                    <div class="metric mode-metric">
+                                        <span class="metric-label">Engine Mode</span>
+                                        <span class="metric-value" id="director-mode">Passive Monitor</span>
+                                    </div>
+                                    <div class="metric utilities-metric">
+                                        <span class="metric-label">NPC Monitoring</span>
+                                        <div id="actor-utilities-list" class="actor-utilities-list-horizontal"></div>
+                                    </div>
+                                    <div class="metric nudges-metric">
+                                        <span class="metric-label">Active Nudges</span>
+                                        <div class="nudges-log" id="nudges-log"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- AutoPlay Popover (anchored above ▶) -->

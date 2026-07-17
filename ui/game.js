@@ -1,8 +1,8 @@
 import { TOOL_CALLING_PROMPT_TEMPLATE, GM_PROMPT_TEMPLATE, NPC_DIALOGUE_PROMPT_TEMPLATE } from './content.js';
 import { ENGINE_CONFIG } from './config.js';
 import { findPath, getNeighbors, setConnections } from './pathfinding.js';
-import { callOllama, testOllamaConnection } from './ollama.js';
-import { updateActor, broadcastEvent, getFormattedMemories } from './actors.js';
+import { callLLM, testLLMConnection } from './llm.js';
+import { updateActor, broadcastEvent, getFormattedMemories, runActorLLM, applyActorLLMResult, runActorFallback } from './actors.js';
 import { runDirector } from './director.js';
 import { runWriter, typewriteText, toggleNarrator, isNarratorActive, speakText } from './writer.js';
 import { runAutoPlayer, checkDecisionPoints } from './autoplayer.js';
@@ -88,14 +88,10 @@ function logGame(type, text) {
         state.history.push({ type, text: formattedText });
     }
 
-    // Capture for the writer chronicle
-    const isTechnicalSystemLog = type === 'system' && (
-        text.includes('[Parsed Action:') || 
-        text.includes('[System Fact Established:') ||
-        text.includes('--- SIMULATION INITIALIZED ---') ||
-        text.startsWith('Goal: ')
-    );
-    if (!isTechnicalSystemLog) {
+    // Capture for the writer chronicle: only include player actions, npc speech, and physical story events.
+    // Exclude technical system logs, objective shifting logs, and director nudges so they don't leak into the narrative.
+    const isLeakedSystemLog = type === 'system' || type === 'director-announce';
+    if (!isLeakedSystemLog) {
         currentTurnLogs.push({ type, text });
     }
 }
@@ -176,55 +172,11 @@ function makeLogsCollapsible(turnGroup) {
 
 // Collapses older turn-groups beyond the VISIBLE_TURN_HISTORY threshold
 function collapseOldTurns() {
-    const output = document.getElementById("terminal-output");
-    if (!output) return;
-
-    // Collect all direct-child turn-groups (not already inside a collapsed wrapper)
-    const groups = Array.from(output.querySelectorAll(":scope > .turn-group"));
-    const visibleCount = VISIBLE_TURN_HISTORY;
-
-    if (groups.length <= visibleCount) return;
-
-    // Groups to hide = everything except the last `visibleCount`
-    const toCollapse = groups.slice(0, groups.length - visibleCount);
-    if (toCollapse.length === 0) return;
-
-    // Remove any previous collapse wrapper
-    const existing = output.querySelector(".collapsed-history");
-    if (existing) {
-        // Move its children back out, then remove it
-        while (existing.firstChild) {
-            output.insertBefore(existing.firstChild, existing);
-        }
-        existing.remove();
-    }
-
-    // Re-collect after unwrapping
-    const allGroups = Array.from(output.querySelectorAll(":scope > .turn-group"));
-    const freshToCollapse = allGroups.slice(0, allGroups.length - visibleCount);
-    if (freshToCollapse.length === 0) return;
-
-    // Build collapse wrapper
-    const wrapper = document.createElement("div");
-    wrapper.className = "collapsed-history";
-
-    const toggle = document.createElement("button");
-    toggle.className = "collapse-toggle";
-    toggle.textContent = `\u22ef ${freshToCollapse.length} earlier turn${freshToCollapse.length > 1 ? 's' : ''} \u22ef`;
-    toggle.addEventListener("click", () => {
-        wrapper.classList.toggle("expanded");
-        const isExpanded = wrapper.classList.contains("expanded");
-        toggle.textContent = isExpanded
-            ? `\u22ef hide ${freshToCollapse.length} earlier turn${freshToCollapse.length > 1 ? 's' : ''} \u22ef`
-            : `\u22ef ${freshToCollapse.length} earlier turn${freshToCollapse.length > 1 ? 's' : ''} \u22ef`;
-    });
-    wrapper.appendChild(toggle);
-
-    // Move turn-groups into wrapper (before the first visible group)
-    const firstVisible = allGroups[allGroups.length - visibleCount];
-    output.insertBefore(wrapper, firstVisible);
-    freshToCollapse.forEach(g => wrapper.appendChild(g));
+    return; // Disabled: Keep the entire history accessible in the chronicle
 }
+
+
+
 
 function logDirector(text) {
     state.nudges.unshift(`[Turn ${state.turn}] ${text}`);
@@ -336,7 +288,7 @@ async function runToolCallingParserLLM(playerInput) {
     const prompt = `Select tool for input: "${playerInput}"`;
 
     try {
-        const res = await callOllama(prompt, system);
+        const res = await callLLM(prompt, system, "parser");
         if (res.tool_name) {
             return res;
         }
@@ -385,7 +337,7 @@ async function generateNPCDialogueLLM(actor, playerSpeech) {
     const prompt = `Formulate in-character reply to player: "${playerSpeech}"`;
 
     try {
-        const res = await callOllama(prompt, system);
+        const res = await callLLM(prompt, system, "npc_dialogue");
         console.log("NPC Dialogue raw output:", res);
         
         // Capture and validate new lore assertions
@@ -438,12 +390,26 @@ async function runGameMasterLLM(playerAction) {
     const prompt = `Action performed: "${playerAction}"`;
 
     try {
-        const res = await callOllama(prompt, system);
+        const res = await callLLM(prompt, system, "director");
         console.log("GM Parser raw output:", res);
         if (res.description) {
             logGame("system", res.description);
         } else {
             logGame("system", getLocalDescription(state));
+        }
+
+        // Capture established facts from the environment and inject into shared lore DB
+        if (res.new_assertions && Array.isArray(res.new_assertions)) {
+            res.new_assertions.forEach(assertion => {
+                const cleanAssert = assertion.trim();
+                if (cleanAssert && cleanAssert.length > 5) {
+                    const isDuplicate = state.loreDb.some(l => l.toLowerCase() === cleanAssert.toLowerCase());
+                    if (!isDuplicate) {
+                        state.loreDb.push(cleanAssert);
+                        logGame("system", `<i>[System Fact Established: "${cleanAssert}"]</i>`);
+                    }
+                }
+            });
         }
     } catch (err) {
         logGame("system", getLocalDescription(state));
@@ -472,15 +438,19 @@ async function finalizeAction() {
             }
             // Create the inline prose slot and animate text into it
             const inlineEl = appendChronicleInline(paragraph);
-            if (inlineEl) {
-                await typewriteText(inlineEl, paragraph);
-            } else {
-                // Fallback: silently write to bookPages if group was already sealed
-                await typewriteText(bookPages, paragraph);
-            }
+            
+            // Start typing and speaking concurrently
+            const typePromise = inlineEl 
+                ? typewriteText(inlineEl, paragraph) 
+                : typewriteText(bookPages, paragraph);
+                
+            const speakPromise = speakText(paragraph);
+            
+            // Wait for both typing and speaking to fully complete
+            await Promise.all([typePromise, speakPromise]);
+            
             // Collapse older turns beyond the visible window
             collapseOldTurns();
-            speakText(paragraph);
         } catch (err) {
             console.error("Writer error:", err);
         }
@@ -538,7 +508,7 @@ async function runStoryConvergenceCheck(state) {
                                 }
                             }
                             
-                            const res = await callOllama(prompt, systemPrompt);
+                            const res = await callLLM(prompt, systemPrompt, "npc_dialogue");
                             if (res && res.dialogue) {
                                 spoken = res.dialogue;
                             }
@@ -591,7 +561,7 @@ async function runStoryConvergenceCheck(state) {
                             const itemName = (activeMilestone.pressureConfig && activeMilestone.pressureConfig.keyItems && activeMilestone.pressureConfig.keyItems[0]) || "the item";
                             const prompt = `Formulate a short spoken dialogue (1-2 sentences) in-character where you (${actor.name}) refuse to hand over the ${itemName} because Sly the Thief is present in the room. Ask the player to shout for a guard.`;
                             const systemPrompt = `You are ${actor.name}, the ${actor.role}. You are at the Castle Gates with the player but Sly the Thief is also here. Output EXACTLY this JSON: { "dialogue": "Your spoken warning dialogue here" }`;
-                            const res = await callOllama(prompt, systemPrompt);
+                            const res = await callLLM(prompt, systemPrompt, "npc_dialogue");
                             if (res && res.dialogue) {
                                 spoken = res.dialogue;
                             }
@@ -706,11 +676,11 @@ async function tickGame(playerInput) {
 
     try {
         // Verify Ollama connection
-        const isOnline = await testOllamaConnection();
+        const isOnline = await testLLMConnection();
         state.isLLMActive = isOnline;
         
         const badge = document.getElementById("target-state-badge");
-        badge.textContent = state.isLLMActive ? "Ollama Active" : "Local Engine";
+        badge.textContent = state.isLLMActive ? "LLM Active" : "Local Engine";
         badge.className = `stat-value ${state.isLLMActive ? 'success' : 'warning'}`;
 
         let toolCall = { tool_name: "wait", arguments: {} };
@@ -876,7 +846,7 @@ You are talking to: ${actor.name} (${actor.role}) in the ${state.storyRooms[stat
 Write what you say to them to progress your goal. Keep it brief and thematic.`;
                         const systemPrompt = `You are Leo, a character in a fantasy RPG. Output EXACTLY this JSON: { "speech": "Your spoken sentence here" }`;
                         
-                        const res = await callOllama(prompt, systemPrompt);
+                        const res = await callLLM(prompt, systemPrompt, "npc_dialogue");
                         if (res && res.speech) {
                             playerDialogue = res.speech;
                         }
@@ -951,7 +921,7 @@ Present characters: ${Object.values(state.actors).filter(a => a.location === sta
 
 Describe the specified target. Output EXACTLY this JSON: { "description": "Your detailed description here" }`;
                 
-                const res = await callOllama(prompt, systemPrompt);
+                const res = await callLLM(prompt, systemPrompt, "director");
                 if (res && res.description) {
                     desc = res.description;
                 }
@@ -1062,8 +1032,29 @@ Describe the specified target. Output EXACTLY this JSON: { "description": "Your 
     await runDirector(state, actualActionText, logGame, logDirector, state.isLLMActive);
 
     // 3. Update NPCs
-    for (let actorId of Object.keys(state.actors)) {
-        await updateActor(actorId, state, logGame, logDirector, state.isLLMActive);
+    const actorIds = Object.keys(state.actors);
+    const actorLLMJobs = [];
+    for (let actorId of actorIds) {
+        const updateStatus = await updateActor(actorId, state, logGame, logDirector, state.isLLMActive, { deferLLM: true });
+        if (updateStatus === "needs-llm") {
+            actorLLMJobs.push(actorId);
+        }
+    }
+
+    if (state.isLLMActive && actorLLMJobs.length > 0) {
+        const actorLLMResults = await Promise.allSettled(
+            actorLLMJobs.map(actorId => runActorLLM(actorId, state, logGame, logDirector))
+        );
+
+        actorLLMResults.forEach((settled, index) => {
+            const actorId = actorLLMJobs[index];
+            if (settled.status === "fulfilled") {
+                applyActorLLMResult(actorId, state, logGame, logDirector, settled.value);
+            } else {
+                console.warn(`LLM failed for actor ${actorId}, falling back to heuristics.`, settled.reason);
+                runActorFallback(actorId, state, logGame, logDirector);
+            }
+        });
     }
 
     // Reset active conversation target if the target actor has moved to a different room
@@ -1403,7 +1394,7 @@ function updateUI() {
         if (buttonsContainer) {
             const resetBtn = document.createElement("button");
             resetBtn.className = "btn-compact btn-action";
-            resetBtn.textContent = "&#8635; Restart";
+            resetBtn.innerHTML = "&#8635; Restart";
             resetBtn.disabled = state.isWriting;
             resetBtn.onclick = () => restartGame();
             buttonsContainer.appendChild(resetBtn);
@@ -1453,7 +1444,9 @@ async function restartGame() {
 
         logGame("system", "<b>--- SIMULATION INITIALIZED ---</b>");
         logGame("system", `Goal: ${state.storyDag.nodes[state.activeMilestoneId].description}`);
-        logGame("system", state.storyRooms[state.playerLocation].desc);
+        
+        // Force-log initial room description as an event so it gets captured in currentTurnLogs for the intro writer
+        logGame("event", state.storyRooms[state.playerLocation].desc);
         
         initMap();
         updateUI();
@@ -1481,9 +1474,11 @@ async function restartGame() {
                 }
                 const inlineEl = appendChronicleInline(paragraph);
                 const animTarget = inlineEl || bookPages;
-                typewriteText(animTarget, paragraph).then(() => {
+                const typePromise = typewriteText(animTarget, paragraph);
+                const speakPromise = speakText(paragraph);
+                
+                Promise.all([typePromise, speakPromise]).then(() => {
                     collapseOldTurns();
-                    speakText(paragraph);
                     state.isWriting = false;
                     updateUI();
                 });
@@ -1504,10 +1499,10 @@ async function restartGame() {
 }
 
 async function testConnection() {
-    const isOnline = await testOllamaConnection();
+    const isOnline = await testLLMConnection();
     state.isLLMActive = isOnline;
     const badge = document.getElementById("target-state-badge");
-    badge.textContent = state.isLLMActive ? "Ollama Active" : "Local Engine";
+    badge.textContent = state.isLLMActive ? "LLM Active" : "Local Engine";
     badge.className = `stat-value ${state.isLLMActive ? 'success' : 'warning'}`;
 }
 
@@ -1774,15 +1769,24 @@ let _openPopoverId = null;
 function openPopover(id) {
     closeAllPopovers();
     const popover = document.getElementById(`popover-${id}`);
-    const trigger = document.querySelector(`[data-popover="${id}"], #autoplay-toggle`);
     if (!popover) return;
 
-    // Position above the trigger button
+    const trigger = document.getElementById(`${id}-overlay-toggle`) || document.querySelector(`[data-popover="${id}"]`) || document.getElementById('autoplay-toggle');
+
     if (trigger) {
         const rect = trigger.getBoundingClientRect();
-        const barRect = trigger.closest('.action-bar-compact')?.getBoundingClientRect() || rect;
-        popover.style.bottom = `${window.innerHeight - barRect.top + 8}px`;
-        popover.style.left = `${rect.left}px`;
+        if (id === 'map' || id === 'brain') {
+            // Drop down from the top header button
+            popover.style.top = `${rect.bottom + 8}px`;
+            popover.style.left = `${Math.min(rect.left, window.innerWidth - popover.offsetWidth - 20)}px`;
+            popover.style.bottom = 'auto';
+        } else {
+            // Anchor above the bottom autoplay bar
+            const barRect = trigger.closest('.action-bar-compact')?.getBoundingClientRect() || rect;
+            popover.style.bottom = `${window.innerHeight - barRect.top + 8}px`;
+            popover.style.left = `${rect.left}px`;
+            popover.style.top = 'auto';
+        }
     }
     popover.classList.add('open');
     _openPopoverId = id;
@@ -1833,8 +1837,10 @@ function initAutoPlayControls() {
     const startBtn = document.getElementById('autoplay-start');
     const slider = document.getElementById('autoplay-speed');
     const speedLabel = document.getElementById('autoplay-speed-label');
+    const mapBtn = document.getElementById('map-overlay-toggle');
+    const brainBtn = document.getElementById('brain-overlay-toggle');
 
-    // ▶ / ⏸ toggle button: open popover if stopped, stop immediately if running
+    // Autoplay toggle
     if (btn) {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1843,6 +1849,20 @@ function initAutoPlayControls() {
             } else {
                 togglePopover('autoplay');
             }
+        });
+    }
+
+    // Header buttons (Map + Brain)
+    if (mapBtn) {
+        mapBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            togglePopover('map');
+        });
+    }
+    if (brainBtn) {
+        brainBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            togglePopover('brain');
         });
     }
 
@@ -1861,8 +1881,12 @@ function initAutoPlayControls() {
 
     // Dismiss popover on outside click or Escape
     document.addEventListener('click', (e) => {
-        if (_openPopoverId && !e.target.closest('.popover') && !e.target.closest('#autoplay-toggle')) {
-            closeAllPopovers();
+        if (_openPopoverId) {
+            const container = document.getElementById(`popover-${_openPopoverId}`);
+            const trigger = document.getElementById(`${_openPopoverId}-overlay-toggle`) || document.getElementById('autoplay-toggle');
+            if (container && !container.contains(e.target) && (!trigger || !trigger.contains(e.target))) {
+                closeAllPopovers();
+            }
         }
     });
     document.addEventListener('keydown', (e) => {
@@ -1871,6 +1895,7 @@ function initAutoPlayControls() {
         }
     });
 }
+
 
 function renderDecisionModal(decision) {
     // Remove any existing modal

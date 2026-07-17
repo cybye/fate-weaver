@@ -55,11 +55,15 @@ Actor Presence:
 
 Active environmental events or nudges: {nudge}
 
-Write a descriptive paragraph (2-3 sentences) detailing the results of the player's action and the current atmosphere of their room, referencing the present characters.
+Rules:
+1. Write a descriptive paragraph (2-3 sentences) detailing the results of the player's action and the current atmosphere of their room, referencing the present characters.
+2. **Safe Environment (Catastrophe Mitigation):** If the player describes an action that would completely break the game, bypass critical objectives, or catastrophically destroy the environment (e.g. "a meteor destroys the whole city" or killing key quest givers), you MUST narrate a logical, magical, or atmospheric counter-measure that preserves the story. (e.g., a magic shield instantly absorbs the impact, the city magically repairs itself, or a divine wind blows the danger away). It should fit the scenery and allow the story to continue.
+3. **Assert New Facts:** If the player establishes a valid environmental change or fact that doesn't break the game, you may return it in the "new_assertions" list so characters learn this fact. If they attempted a catastrophic action that was mitigated, assert the *mitigated result* (e.g., "The Castle remains protected by an ancient, invisible warding spell").
 
 Output EXACTLY this JSON:
 {{
-  "description": "Engaging description text"
+  "description": "Engaging description text detailing the outcome",
+  "new_assertions": ["Factual details about the environment established this turn. Leave empty if none."]
 }}`;
 
 export const NPC_DIALOGUE_PROMPT_TEMPLATE = `You are {name}, a character in a text adventure game.
@@ -98,14 +102,17 @@ Your task is to take the events of a single game turn and novelize them into a s
 Rules:
 - Write in a rich, descriptive fantasy novelist style (past tense, third person).
 - Focus on narrative flow, atmosphere, action, and dialogue.
-- Do NOT refer to game mechanics, turn numbers, JSON, UI buttons, or rules. Translate them into natural narrative events (e.g. 'traveling to gates' becomes 'Crossing the threshold, the towering iron gates came into view').
+- **Weave Decisions and Intentions:** Do not just describe the physical results of movements or events. You MUST explicitly describe the player's choices, motivations, and decisions, explaining *why* they chose to take an action or go somewhere, and how their past decisions led them here.
+- **Do Not Abstract Core Dialogue and Facts:** When an NPC reveals critical plot facts, directives, names, warnings, or objectives (e.g., Bob stating he is the royal messenger and telling Leo to meet him at the Castle Gates, or naming someone), you MUST explicitly describe and detail these specifics in the narrative prose. Do not generalize or reduce them to summaries like "after a sudden exchange of greetings" or "the messenger confirmed his identity". Write the actual directives, names, and revelations directly into the prose so the player learns every important fact by reading the chronicle.
+- Do NOT refer to game mechanics, turn numbers, JSON, UI buttons, or rules. Translate them into natural narrative events.
 - **Flow & Scene Transitions**: 
   - Read the "Story chronicle written so far" carefully. Your new paragraph must be a direct, seamless continuation of the story.
-  - **Paragraph Opening Variety**: Look at the opening sentences of the last 2-3 paragraphs. You MUST vary the opening of your new paragraph. Never repeat the same subject structure or starter words (e.g., if the previous paragraph started with "The traveler", start yours with an environmental detail, a sound, a passing of time, or an NPC's movement).
-  - **Scene Cut on Travel**: If the traveler moves to a new room in this turn, write a clean transition that cuts the previous scene and establishes the new atmosphere. Do not drag forward descriptions or lingering elements from the old room.
-  - **No Repetitive Descriptions**: If the traveler remains in the same room, do not repeat the location's descriptive adjectives or room features from previous paragraphs. Focus instead on the progression of the conversation, thoughts, or events.
+  - **Paragraph Opening Variety**: Look at the opening sentences of the last 2-3 paragraphs. You MUST vary the opening of your new paragraph. Never repeat the same subject structure or starter words.
+  - **Scene Cut on Travel**: If the traveler moves to a new room in this turn, write a clean transition that cuts the previous scene and establishes the new atmosphere.
+  - **No Repetitive Descriptions**: If the traveler remains in the same room, do not repeat the location's descriptive adjectives from previous paragraphs. Focus on the progression of the conversation, thoughts, or events.
 - Add subtle, characterful narrator commentary, reflection, or mild irony about the traveler's decisions, choices, or current predicament.
 - Combine the player's action, NPC dialogue, and system events into a single unified, elegant paragraph.
+- Ensure important milestones, events and plot twists are narrated and described in detail, not in summaries. These are very important.
 - DO NOT explain your work, write a chain of thought, or list these rules. You must ONLY output the JSON object.
 - Output EXACTLY this JSON:
 {{

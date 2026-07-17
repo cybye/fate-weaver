@@ -1,6 +1,6 @@
 # Fate Weaver
 
-An interactive text-adventure simulation game and narrative engine powered by a local Ollama Large Language Model.
+An interactive text-adventure simulation game and narrative engine powered by a backend LLM service that can route to local or OpenRouter models.
 
 The game is structured as a turn-based, multi-agent sandbox where non-player characters (NPCs) make utility-based pathfinding decisions, share information dynamically through room broadcasts, commit interactions to short-term memory lists, and react contextually. The chronicle of events is continuously translated into rich, novelistic fantasy prose by the scribe writer layer.
 
@@ -11,7 +11,7 @@ The game is structured as a turn-based, multi-agent sandbox where non-player cha
 The system is decoupled into three core layers:
 1. **Simulation Layer (`game.js`, `actors.js`)**: Manages coordinates, inventories, pathfinding, and the main game tick loop.
 2. **Director Layer (`content.js`)**: Configures story milestones (a Directed Acyclic Graph), room connections, and global lore facts.
-3. **Chronicler Layer (`writer.js`, `ollama.js`)**: Compiles turn events and logs, translating them into cohesive, stylish paragraphs using a local LLM.
+3. **Chronicler Layer (`writer.js`, `llm.js`)**: Compiles turn events and logs, translating them into cohesive, stylish paragraphs using the backend LLM API.
 
 ---
 
@@ -29,14 +29,14 @@ The system is decoupled into three core layers:
 
 ### Prerequisites
 * [Node.js](https://nodejs.org/) (v16+)
-* [Ollama](https://ollama.com/) (running locally)
+* A backend LLM service configured through `server/llm_config.json`
 
 ### 1. Model Setup
-Download the recommended model for the writer and parser:
+Download or configure the model for the writer and parser:
 ```bash
 ollama run gemma4:12b
 ```
-*(You can customize the model name or Ollama port in `config.js` if you prefer to use `llama3` or a different model).*
+*(You can customize the backend API base in `config.js` and the provider/model mapping in `server/llm_config.json`.)*
 
 ### 2. Install Dependencies
 Initialize and install standard static packages:
@@ -45,7 +45,7 @@ npm install
 ```
 
 ### 3. Running the Server
-Start the local proxy server to route API endpoints internally:
+Start the local backend server to route API endpoints internally:
 ```bash
 npm start
 ```
@@ -60,8 +60,8 @@ The application will launch on [http://localhost:8080](http://localhost:8080).
 ├── actors.js         # NPC Utility AI loops, memories database, perception checks
 ├── writer.js         # Chronicle typewriter compiler and fallback narrative systems
 ├── content.js        # Story DAG milestones, room metrics, dialogue prompt instructions
-├── config.js         # App configs (Ollama Url, default model, memory weights)
-├── server.js         # HTTP server proxy routing LLM calls to localhost:11434
+├── config.js         # App configs (backend API base, default model, memory weights)
+├── server.js         # HTTP server routing backend LLM calls
 ├── style.css         # Stylized layouts (parchment chronicle, command console UI)
 └── index.html        # App interface markup
 ```

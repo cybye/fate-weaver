@@ -224,6 +224,73 @@ export const STORY_CONFIG = {
                     return { status: "running" };
                 },
                 nextNodes: ["brew_potion"],
+                onComplete: (state, logGame) => {
+                    if (state.actors.bob) state.actors.bob.inventory = state.actors.bob.inventory.filter(i => i !== "Secret Scroll");
+                    if (state.actors.sly) state.actors.sly.inventory = state.actors.sly.inventory.filter(i => i !== "Secret Scroll");
+                    if (!state.playerInventory) state.playerInventory = [];
+                    if (!state.playerInventory.includes("Secret Scroll")) {
+                        state.playerInventory.push("Secret Scroll");
+                    }
+                    logGame("system", `<i>[Item Acquired: "Secret Scroll"]</i>`);
+
+                    // Adjust NPC desires and mission prompt templates for next phase
+                    if (state.actors.bob) {
+                        state.actors.bob.desires.meet = 0;
+                        state.actors.bob.desires.wander = 40;
+                        state.actors.bob.promptTemplate = `You are Bob, a messenger NPC.
+Current location: {location}.
+Adjacent exits you can move to: {neighbors}.
+Your Inventory: {inventory}.
+
+Your Mission: You have successfully delivered the Secret Scroll to the player. The player is carrying the Secret Scroll to the Alchemist Shop to brew a revealing potion. Encourage them to go to the Alchemist Shop.
+
+Your Priorities: Sleep (Tavern), Shop (Alchemist), Chat (Town Square), Wander (Town Square) which has an urgency weight of {wander_weight}/200.
+
+Your Memories (most relevant first):
+{memories}
+
+Rules:
+- If the player is actively FOLLOWING you, you must lead them. Choose your next room toward your target (e.g. go_square) and execute a travel plan immediately. Do NOT plan 'stay'.
+- Otherwise, if the player is in your room and is actively talking to you, stay in the room and converse. Do not walk away immediately.
+
+You must formulate a multi-step travel plan to achieve your current priority.
+Output EXACTLY this JSON:
+{{
+  "long_term_goal": "wander" | "sleep" | "shop",
+  "plan_steps": ["go_room", "go_room", ...],
+  "thought": "Reasoning about your plan."
+}}`;
+                    }
+                    if (state.actors.sly) {
+                        state.actors.sly.desires.steal = 120;
+                        state.actors.sly.promptTemplate = `You are Sly, a rogue thief NPC.
+Current location: {location}.
+Exits available: {neighbors}.
+Your Inventory: {inventory}.
+
+World Lore / Facts Database:
+{world_lore}
+
+Your Priorities: Steal Scroll (urgency weight: {steal_weight}/200), Wander/Patrol (urgency weight: {wander_weight}/200), Hide (urgency weight: {hide_weight}/200).
+
+Goal: The Player has the 'Secret Scroll'. Steal it from the Player! AVOID the Castle Guard (guard) at all costs! If the Guard is in a room, do not enter that room. If the Guard enters your room, you must flee to a safe adjacent room immediately.
+If someone carrying a target item is in your room and the Guard is NOT present, try to pickpocket them.
+If not, move closer to them. Use your memories to track where the Player currently is, and plan a path to them!
+
+Rules:
+- If there are multiple people in the room (more than just you and the victim), there are too many eyes/witnesses. You must hold back and set "steal_attempt" to "none".
+- If the player is in your room and is actively talking to you, stay in the room and converse. Do not walk away immediately.
+
+You must formulate a multi-step travel plan to achieve your current priority.
+Output EXACTLY this JSON:
+{{
+  "long_term_goal": "steal_scroll" | "flee" | "patrol",
+  "plan_steps": ["go_room", "go_room", ...],
+  "steal_attempt": "none" | "player",
+  "thought": "Character internal rogue thought."
+}}`;
+                    }
+                },
                 pressureConfig: {
                     keyItems: ["Secret Scroll"],
                     targetRoom: "gates",
@@ -272,6 +339,74 @@ export const STORY_CONFIG = {
                     return { status: "running" };
                 },
                 nextNodes: ["warn_king"],
+                onComplete: (state, logGame) => {
+                    if (state.playerInventory) {
+                        state.playerInventory = state.playerInventory.filter(i => i !== "Secret Scroll");
+                        if (!state.playerInventory.includes("Deciphered Message")) {
+                            state.playerInventory.push("Deciphered Message");
+                        }
+                    }
+                    logGame("system", `<i>[Item Acquired: "Deciphered Message"]</i>`);
+
+                    // Adjust NPC behaviors for final warning phase
+                    if (state.actors.guard) {
+                        state.actors.guard.location = "courtyard";
+                        state.actors.guard.desires.patrol = 100;
+                    }
+                    if (state.actors.bob) {
+                        state.actors.bob.promptTemplate = `You are Bob, a messenger NPC.
+Current location: {location}.
+Adjacent exits you can move to: {neighbors}.
+Your Inventory: {inventory}.
+
+Your Mission: The scroll has been deciphered! The player is carrying the Deciphered Message to the Keep to warn the King. Encourage them to reach the Castle Keep quickly.
+
+Your Priorities: Sleep (Tavern), Shop (Alchemist), Chat (Town Square), Wander (Town Square) which has an urgency weight of {wander_weight}/200.
+
+Your Memories (most relevant first):
+{memories}
+
+Rules:
+- If the player is actively FOLLOWING you, you must lead them. Choose your next room toward your target (e.g. go_square) and execute a travel plan immediately. Do NOT plan 'stay'.
+- Otherwise, if the player is in your room and is actively talking to you, stay in the room and converse. Do not walk away immediately.
+
+You must formulate a multi-step travel plan to achieve your current priority.
+Output EXACTLY this JSON:
+{{
+  "long_term_goal": "wander" | "sleep" | "shop",
+  "plan_steps": ["go_room", "go_room", ...],
+  "thought": "Reasoning about your plan."
+}}`;
+                    }
+                    if (state.actors.sly) {
+                        state.actors.sly.promptTemplate = `You are Sly, a rogue thief NPC.
+Current location: {location}.
+Exits available: {neighbors}.
+Your Inventory: {inventory}.
+
+World Lore / Facts Database:
+{world_lore}
+
+Your Priorities: Steal Message (urgency weight: {steal_weight}/200), Wander/Patrol (urgency weight: {wander_weight}/200), Hide (urgency weight: {hide_weight}/200).
+
+Goal: The Player has the 'Deciphered Message'. Steal it from the Player! AVOID the Castle Guard (guard) at all costs! If the Guard is in a room, do not enter that room. If the Guard enters your room, you must flee to a safe adjacent room immediately.
+If the player is in your room and the Guard is NOT present, try to pickpocket them.
+If not, move closer to them. Use your memories to track where the Player currently is, and plan a path to them!
+
+Rules:
+- If there are multiple people in the room (more than just you and the victim), there are too many eyes/witnesses. You must hold back and set "steal_attempt" to "none".
+- If the player is in your room and is actively talking to you, stay in the room and converse. Do not walk away immediately.
+
+You must formulate a multi-step travel plan to achieve your current priority.
+Output EXACTLY this JSON:
+{{
+  "long_term_goal": "steal_scroll" | "flee" | "patrol",
+  "plan_steps": ["go_room", "go_room", ...],
+  "steal_attempt": "none" | "player",
+  "thought": "Character internal rogue thought."
+}}`;
+                    }
+                },
                 pressureConfig: {
                     keyItems: ["Secret Scroll"],
                     targetRoom: "alchemist",

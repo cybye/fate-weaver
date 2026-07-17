@@ -1,6 +1,6 @@
 import { DIRECTOR_PROFILE } from './director_actor.js';
 import { findPath, getNeighbors } from './pathfinding.js';
-import { callOllama } from './ollama.js';
+import { callLLM } from './llm.js';
 import { STORY_REGISTRY } from './storyManager.js';
 
 export async function runDirector(state, playerAction, logGame, logDirector, isLLMActive) {
@@ -111,22 +111,29 @@ function calculateNarrativePressure(state) {
     if (pressure <= 0.5) mode = "Passive Monitor";
     else if (pressure <= 1.0) mode = "Soft Nudges";
     else if (pressure <= 1.5) mode = "Medium Nudges";
-    else mode = "Strong Nudges";
+    else if (pressure <= 2.0) mode = "Strong Nudges";
+    else mode = "Creative Fate Correction";
 
     // Stall warning escalation
     const stallCount = state._playerTurnStallCount || 0;
-    if (stallCount >= 3) {
-        if (mode === "Passive Monitor" || mode === "Soft Nudges") {
-            mode = "Medium Nudges";
-        }
+    if (stallCount >= 5) {
+        mode = "Creative Fate Correction";
+    } else if (stallCount >= 3) {
+        mode = "Strong Nudges";
     } else if (stallCount >= 2) {
         if (mode === "Passive Monitor") {
             mode = "Soft Nudges";
         }
     }
 
-    // Turn warning escalation (last 2 turns of the milestone always escalate to Strong Nudges)
-    if (remainingTurns <= 2) mode = "Strong Nudges";
+    // Turn warning escalation (last turn or two of the milestone always escalate pressure)
+    if (remainingTurns <= 1) {
+        mode = "Creative Fate Correction";
+    } else if (remainingTurns <= 2) {
+        if (mode !== "Creative Fate Correction") {
+            mode = "Strong Nudges";
+        }
+    }
 
     return { pressure, mode };
 }
@@ -280,7 +287,7 @@ Player's last action: "${playerAction}"
 
 Formulate your immediate nudge, any state mutations, and a flexible plan of steps for future turns.`;
 
-    const res = await callOllama(prompt, systemPrompt);
+    const res = await callLLM(prompt, systemPrompt, "director");
     console.log("Director LLM output:", res);
 
     state.directorMode = res.mode || targetMode;

@@ -324,7 +324,9 @@ body {
     border-top: 1px solid var(--border-color);
     background: rgba(0, 0, 0, 0.12);
     overflow: hidden;
+    flex-shrink: 0;        /* Keep fixed at bottom, do not squeeze or push off */
 }
+
 
 
 .dir-buttons {
@@ -473,6 +475,53 @@ body {
     pointer-events: all;
     transform: scale(1) translateY(0);
 }
+
+/* Header overlays (Map + Brain) special sizes */
+.popover.header-popover {
+    min-width: 480px;
+    max-width: 90%;
+    transform-origin: top left;
+}
+
+#popover-map {
+    min-width: 500px;
+}
+
+#popover-brain {
+    min-width: 650px;
+}
+
+.map-viewport-container {
+    height: 380px;
+    position: relative;
+    background: #060910;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.map-viewport-container .map-viewport {
+    height: 100%;
+}
+
+.header-overlay-btn {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.header-overlay-btn:hover {
+    color: var(--accent-blue);
+    border-color: var(--accent-blue);
+    background: var(--accent-blue-glow);
+}
+
 
 .popover-header {
     padding: 10px 14px 8px;
