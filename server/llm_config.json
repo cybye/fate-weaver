@@ -2,8 +2,7 @@
   "provider": "openrouter",
   "ollama_url": "http://localhost:11434",
   "roles": {
-    "default1":"tencent/hy3:free",
-    "default0": "moonshotai/kimi-k2-0905",
-    "default": "aion-labs/aion-3.0-mini"
+    "default": "aion-labs/aion-3.0-mini",
+    "default1": "z-ai/glm-5.2"
   }
 }

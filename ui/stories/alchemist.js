@@ -51,17 +51,16 @@ export const STORY_CONFIG = {
                         choices: [
                             {
                                 label: "Harvest the Glow Mushroom carefully",
-                                mutations: [],
+                                mutations: [
+                                    { type: "set_decisions_log", key: "mushroom_harvest", value: "Harvested the Glow Mushroom" },
+                                    { type: "grant_item", item: "Glow Mushroom" }
+                                ],
                                 consequence: "You carefully pluck the bioluminescent cap and place it in your satchel."
                             }
                         ]
                     }
                 ],
                 updateObjectives: (state) => {
-                    const hasMushroom = state.playerInventory.includes("Glow Mushroom") || (state.decisionsLog && state.decisionsLog.mushroom_harvest);
-                    if (hasMushroom && !state.playerInventory.includes("Glow Mushroom")) {
-                        state.playerInventory.push("Glow Mushroom");
-                    }
                     if (state.actors.bob) {
                         const hasLeaf = state.actors.bob.inventory.includes("Shadow Leaf");
                         if (hasLeaf) {
@@ -83,7 +82,6 @@ export const STORY_CONFIG = {
                     if (state.playerLocation === "tavern" && state.actors.bob && state.actors.bob.location === "tavern" && state.actors.bob.inventory.includes("Shadow Leaf")) {
                         state.playerInventory.push("Shadow Leaf");
                         state.actors.bob.inventory = state.actors.bob.inventory.filter(i => i !== "Shadow Leaf");
-                        logGame("system", "<i>[Item Acquired: \"Shadow Leaf\"]</i>");
                     }
 
                     if (hasLeaf && hasMushroom) {

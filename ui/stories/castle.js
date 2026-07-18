@@ -524,7 +524,7 @@ Output EXACTLY this JSON:
             inventory: [],
             desires: { steal: 40, wander: 20, hide: 10 },
             desireTargets: {
-                steal: "target",
+                steal: "square",
                 wander: "square",
                 hide: "tavern"
             },

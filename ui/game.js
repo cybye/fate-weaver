@@ -6,7 +6,18 @@ import { updateActor, broadcastEvent, getFormattedMemories, runActorLLM, applyAc
 import { runDirector } from './director.js';
 import { runWriter, typewriteText, toggleNarrator, isNarratorActive, speakText } from './writer.js';
 import { runAutoPlayer, checkDecisionPoints } from './autoplayer.js';
-import { loadStory, STORY_REGISTRY, restoreStoryFunctions, getNextChapterId } from './storyManager.js';
+import { loadStory, STORY_REGISTRY, restoreStoryFunctions, getNextChapterId, validateAllStories } from './storyManager.js';
+import { setLogText } from './sanitize.js';
+
+// Validate every registered story + campaign order once at startup. Authoring
+// mistakes (dangling room/node references, unknown campaign ids) surface loudly
+// in the console instead of failing silently at runtime.
+validateAllStories();
+
+// --- SAVE VERSIONING ---
+// Bump when the serialized state shape changes incompatibly. Old saves are
+// discarded on load (clean break) rather than migrated.
+const SAVE_VERSION = 2;
 
 // --- WRITER LOG QUEUE ---
 let currentTurnLogs = [];
@@ -78,7 +89,9 @@ function logGame(type, text) {
     if (type !== 'system') {
         formattedText = `[Turn ${state.turn}] ${text}`;
     }
-    p.innerHTML = formattedText;
+    // Raw LLM/player text: escape to prevent XSS. Engine-formatted strings use
+    // setLogText(..., true) at their specific call sites.
+    setLogText(p, formattedText);
     
     currentTurnGroup.appendChild(p);
     output.scrollTop = output.scrollHeight;
@@ -463,8 +476,14 @@ async function finalizeAction() {
                 logGame("system", "<i>[Scribe is drafting the chronicle chapter...]</i>");
             }
             const paragraph = await runWriter(state, currentTurnLogs, state.isLLMActive);
+            const isChapterCloser = !!state._pendingChapterBreak;
             if (state.chronicleHistory) {
                 state.chronicleHistory.push(paragraph);
+            }
+            // Persist the chronicle paragraph into history so the left panel survives a
+            // page reload (the live DOM is appended separately by appendChronicleInline).
+            if (state.history) {
+                state.history.push({ type: "chronicle", text: paragraph, turn: state.turn, chapterCloser: isChapterCloser });
             }
             // Create the inline prose slot and animate text into it
             const inlineEl = appendChronicleInline(paragraph);
@@ -730,6 +749,10 @@ async function writeChapterOpening() {
             // Record this paragraph's index as a chapter-opening so it gets a drop-cap.
             if (!state.chapterBreaks) state.chapterBreaks = [];
             state.chapterBreaks.push(state.chronicleHistory.length - 1);
+        }
+        // Persist the opening prose into history (chapterBreak => drop-cap on reload).
+        if (state.history) {
+            state.history.push({ type: "chronicle", text: paragraph, turn: state.turn, chapterBreak: true });
         }
         const inlineEl = appendChronicleInline(paragraph);
         const animTarget = inlineEl || document.getElementById("book-pages");
@@ -1346,19 +1369,10 @@ function initMap() {
 // --- LOCAL STORAGE PERSISTENCE ---
 function saveState() {
     try {
-        localStorage.setItem("simulation_state", JSON.stringify(state));
+        const toSave = { ...state, __saveVersion: SAVE_VERSION };
+        localStorage.setItem("simulation_state", JSON.stringify(toSave));
     } catch (err) {
         console.error("Failed to save state to localStorage:", err);
-    }
-}
-
-function restoreActorFunctions(actors) {
-    const config = STORY_REGISTRY[state.activeStoryId] || STORY_REGISTRY.castle;
-    for (let id in actors) {
-        if (config.actors[id]) {
-            actors[id].heuristics = config.actors[id].heuristics;
-            actors[id].subscriptions = config.actors[id].subscriptions;
-        }
     }
 }
 
@@ -1640,6 +1654,9 @@ async function restartGame() {
                 if (state.chronicleHistory) {
                     state.chronicleHistory.push(paragraph);
                 }
+                if (state.history) {
+                    state.history.push({ type: "chronicle", text: paragraph, turn: state.turn });
+                }
                 const inlineEl = appendChronicleInline(paragraph);
                 const animTarget = inlineEl || bookPages;
                 const typePromise = typewriteText(animTarget, paragraph);
@@ -1761,78 +1778,72 @@ window.onload = () => {
     const saved = localStorage.getItem("simulation_state");
     if (saved) {
         try {
-            state = JSON.parse(saved);
-            state.isWriting = false; // Always unlock inputs on refresh!
-            setConnections(state.storyConnections);
+            const parsed = JSON.parse(saved);
+            // Clean break: discard saves from an incompatible version rather than
+            // attempting fragile migration. A fresh game starts below.
+            if (parsed.__saveVersion !== SAVE_VERSION) {
+                console.warn(`[load] Discarding save with version ${parsed.__saveVersion} (expected ${SAVE_VERSION}).`);
+                localStorage.removeItem("simulation_state");
+            } else {
+                state = parsed;
+                state.isWriting = false; // Always unlock inputs on refresh!
+                setConnections(state.storyConnections);
+                restoreStoryFunctions(state);
             
-            // Migrate old serialized prompt templates in active localStorage
-            if (state.actors && state.actors.bob && state.actors.bob.promptTemplate) {
-                if (state.actors.bob.promptTemplate.includes("stay in the room and converse. Do not walk away immediately.")) {
-                    state.actors.bob.promptTemplate = state.actors.bob.promptTemplate.replace(
-                        "stay in the room and converse. Do not walk away immediately.",
-                        "stay in the room and converse, UNLESS they are actively FOLLOWING you or telling you to lead. If they are following you, you must execute a travel plan toward your target destination immediately. Do NOT stay in the room."
-                    );
-                }
-            }
-            if (state.actors && state.actors.sly && state.actors.sly.promptTemplate) {
-                if (state.actors.sly.promptTemplate.includes("stay in the room and converse. Do not walk away immediately.")) {
-                    state.actors.sly.promptTemplate = state.actors.sly.promptTemplate.replace(
-                        "stay in the room and converse. Do not walk away immediately.",
-                        "stay in the room and converse, UNLESS they are actively FOLLOWING you or telling you to lead. If they are following you, you must execute a travel plan toward your target destination immediately. Do NOT stay in the room."
-                    );
-                }
-            }
-            
-            restoreStoryFunctions(state);
-            
-            // Rebuild terminal DOM history with turn-groups + interleaved chronicle
+            // Rebuild terminal DOM history with turn-groups + interleaved chronicle.
+            // state.history is the single source of truth and is continuous across
+            // chapter transitions (it is NOT reset on campaign carry-over), so the
+            // left panel matches live play exactly after a reload.
             const output = document.getElementById("terminal-output");
             currentTurnGroup = null; // Reset module-level group ref
             if (output) {
                 output.innerHTML = "";
 
-                // Group history logs by turn number
-                const logsByTurn = {};
-                state.history.forEach(log => {
-                    // Extract turn number from formatted text like "[Turn 3] ..."
-                    const match = log.text.match(/^\[Turn (\d+)\]/);
-                    const turn = match ? parseInt(match[1]) : 0;
-                    if (!logsByTurn[turn]) logsByTurn[turn] = [];
-                    logsByTurn[turn].push(log);
-                });
+                // Replay history in order, opening a fresh turn-group whenever the
+                // turn number changes (or for the very first entry).
+                let currentGroup = null;
+                let lastTurn = null;
+                state.history.forEach((log, idx) => {
+                    const isChronicle = log.type === "chronicle";
+                    // Chronicle entries carry an explicit turn; other logs derive it
+                    // from their formatted text (e.g. "[Turn 3] ...") as before.
+                    let turn = typeof log.turn === "number" ? log.turn : 0;
+                    if (!isChronicle) {
+                        const match = (log.text || "").match(/^\[Turn (\d+)\]/);
+                        if (match) turn = parseInt(match[1]);
+                    }
 
-                const turnKeys = Object.keys(logsByTurn).map(Number).sort((a, b) => a - b);
-                turnKeys.forEach((turn, idx) => {
-                    const group = document.createElement("div");
-                    group.className = "turn-group";
-                    group.dataset.turn = turn;
+                    if (!isChronicle && (currentGroup === null || turn !== lastTurn)) {
+                        currentGroup = document.createElement("div");
+                        currentGroup.className = "turn-group";
+                        currentGroup.dataset.turn = turn;
+                        output.appendChild(currentGroup);
+                        lastTurn = turn;
+                    }
 
-                    logsByTurn[turn].forEach(log => {
-                        const p = document.createElement("p");
-                        p.className = `log-${log.type}`;
-                        p.innerHTML = log.text;
-                        group.appendChild(p);
-                    });
-
-                    // Interleave chronicle paragraph if available for this turn index
-                    if (state.chronicleHistory && state.chronicleHistory[idx]) {
-                        const isFirstParagraph = idx === 0;
-                        const isChapterBreak = !isFirstParagraph && Array.isArray(state.chapterBreaks) && state.chapterBreaks.includes(idx);
-                        const isChapterCloser = !isFirstParagraph && Array.isArray(state.chapterBreakClosers) && state.chapterBreakClosers.includes(idx);
+                    if (isChronicle) {
+                        // Chronicle paragraphs are rendered into their own group so they
+                        // survive reload even when no other logs share their turn.
+                        const group = document.createElement("div");
+                        group.className = "turn-group";
+                        group.dataset.turn = turn;
 
                         const p = document.createElement("p");
                         p.className = "chronicle-inline";
-                        let textVal = state.chronicleHistory[idx];
+                        const textVal = log.text || "";
+                        const isFirstParagraph = idx === 0;
+                        const isChapterBreak = !!log.chapterBreak;
+                        const isChapterCloser = !!log.chapterCloser;
                         if (isFirstParagraph || isChapterBreak) {
                             p.classList.add("first-paragraph");
                             const firstChar = textVal.charAt(0);
                             const restText = textVal.substring(1);
-                            
+
                             const dropCapSpan = document.createElement("span");
                             dropCapSpan.className = "drop-cap";
                             dropCapSpan.textContent = firstChar;
                             p.appendChild(dropCapSpan);
-                            
+
                             const restSpan = document.createElement("span");
                             restSpan.textContent = restText;
                             p.appendChild(restSpan);
@@ -1856,10 +1867,17 @@ window.onload = () => {
                             divider.innerHTML = "<span>&#10022;</span>";
                             group.appendChild(divider);
                         }
-                    }
 
-                    makeLogsCollapsible(group);
-                    output.appendChild(group);
+                        makeLogsCollapsible(group);
+                        output.appendChild(group);
+                    } else {
+                        const p = document.createElement("p");
+                        p.className = `log-${log.type}`;
+                        // Stored history may contain engine-formatted markup; sanitize
+                        // (allow-list) rather than escape so legitimate <b>/<i> survive.
+                        setLogText(p, log.text, true);
+                        currentGroup.appendChild(p);
+                    }
                 });
 
                 collapseOldTurns();
@@ -1876,7 +1894,10 @@ window.onload = () => {
                     if (idx === 0) {
                         const firstLetter = para.charAt(0);
                         const restText = para.slice(1);
-                        p.innerHTML = `<span class="drop-cap">${firstLetter}</span>${restText}`;
+                        // Writer prose is LLM output: wrap the first letter in a
+                        // drop-cap span via the sanitizer (allow-list), which escapes
+                        // the rest of the text.
+                        setLogText(p, `<span class="drop-cap">${firstLetter}</span>${restText}`, true);
                     } else {
                         p.textContent = para;
                     }
@@ -1904,6 +1925,7 @@ window.onload = () => {
             updateUI();
             updateAutoPlayButton();
             testConnection();
+            }
         } catch (err) {
             console.error("Failed to parse saved state, starting new game:", err);
             restartGame();
@@ -2132,6 +2154,10 @@ function resolveDecision(decision, choice) {
             } else if (mut.type === 'set_decisions_log') {
                 if (!state.decisionsLog) state.decisionsLog = {};
                 state.decisionsLog[mut.key] = mut.value;
+            } else if (mut.type === 'grant_item') {
+                if (mut.item && !state.playerInventory.includes(mut.item)) {
+                    state.playerInventory.push(mut.item);
+                }
             }
             // Other mutation types can be added here as needed
         });

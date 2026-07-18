@@ -78,7 +78,7 @@ export const STORY_CONFIG = {
                         return {
                             status: "completed",
                             // Closing note woven into the chronicle when the chapter ends.
-                            // Per tought.md: "you caught the thought, time rewinds and you start over thinking..."
+                            // Per docs/thought.md: "you caught the thought, time rewinds and you start over thinking..."
                             closingNote: "You caught the Thought. For one held breath the Void held its silence — then time rewound upon itself, and the chronicle began to think itself anew.",
                             msg: "STORY CONVERGENCE: Your fingers close around the Thought. It pulses once — and time rewinds. The chronicle begins anew..."
                         };

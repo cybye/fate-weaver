@@ -1,1 +1,1 @@
-export { callLLM, callOllama, testLLMConnection, testOllamaConnection } from './ollama.js';
+export { callLLM, testLLMConnection } from './ollama.js';

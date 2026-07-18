@@ -3,7 +3,10 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = 8080;
-const OLLAMA_TARGET = 'http://localhost:11434';
+const MAX_BODY_BYTES = 1024 * 1024; // 1 MB cap on request bodies (DoS guard)
+
+// Absolute path to the UI root; all static requests are confined beneath it.
+const UI_ROOT = path.resolve(__dirname, '../ui');
 
 // Helper to determine Content-Type
 function getContentType(filePath) {
@@ -21,18 +24,6 @@ function getContentType(filePath) {
 }
 
 const llmService = require('./llmService');
-
-function parseStructuredResponse(responseText) {
-    if (responseText && typeof responseText === 'object') {
-        return responseText;
-    }
-
-    if (typeof responseText !== 'string') {
-        throw new Error('LLM response was not a string or object.');
-    }
-
-    return JSON.parse(responseText);
-}
 
 function normalizeLLMResponse(responseText, role) {
     const normalizedRole = (role || 'default').toLowerCase();
@@ -73,34 +64,44 @@ function normalizeLLMResponse(responseText, role) {
 
     switch (normalizedRole) {
         case 'writer':
-            return { paragraph: trimmed };
+            return { _fallback: true, paragraph: trimmed };
         case 'director':
-            return { description: trimmed, new_assertions: [] };
+            return { _fallback: true, description: trimmed, new_assertions: [] };
         case 'npc_dialogue':
-            return { dialogue: trimmed, new_assertions: [], story_shared: false };
+            return { _fallback: true, dialogue: trimmed, new_assertions: [], story_shared: false };
         case 'parser':
-            return { tool_name: 'wait', arguments: {} };
+            return { _fallback: true, tool_name: 'wait', arguments: {} };
         case 'autoplayer':
-            return { tool_name: 'wait', arguments: {}, thought: '' };
+            return { _fallback: true, tool_name: 'wait', arguments: {}, thought: '' };
         case 'npc_action':
-            return { thought: '', plan_steps: ['stay'], long_term_goal: 'wander', steal_attempt: 'none' };
+            return { _fallback: true, thought: '', plan_steps: ['stay'], long_term_goal: 'wander', steal_attempt: 'none' };
         default:
-            return { response: trimmed };
+            return { _fallback: true, response: trimmed };
     }
 }
 
-// Helper to read POST body as JSON
+// Helper to read POST body as JSON, with a hard size cap to prevent unbounded buffering.
 function readJsonBody(req) {
     return new Promise((resolve, reject) => {
         let body = '';
-        req.on('data', chunk => { body += chunk; });
+        let exceeded = false;
+        req.on('data', chunk => {
+            if (exceeded) return;
+            body += chunk;
+            if (Buffer.byteLength(body) > MAX_BODY_BYTES) {
+                exceeded = true;
+                reject(new Error('Request body exceeds size limit.'));
+            }
+        });
         req.on('end', () => {
+            if (exceeded) return;
             try {
                 resolve(body ? JSON.parse(body) : {});
             } catch (err) {
                 reject(err);
             }
         });
+        req.on('error', reject);
     });
 }
 
@@ -148,43 +149,20 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    // 1. Check if the request is an Ollama proxy call (maintained for fallback)
-    if (req.url.startsWith('/api/ollama/')) {
-        // Strip "/api/ollama" to get the target path (e.g. "/api/generate" or "/api/tags")
-        const targetPath = req.url.substring('/api/ollama'.length);
-        const targetUrl = OLLAMA_TARGET + targetPath;
-
-        console.log(`[Proxy] Forwarding ${req.method} ${req.url} -> ${targetUrl}`);
-
-        const headers = { ...req.headers };
-        // Delete host header so node's http client sets the correct target host
-        delete headers.host;
-
-        const proxyReq = http.request(targetUrl, {
-            method: req.method,
-            headers: headers
-        }, (proxyRes) => {
-            res.writeHead(proxyRes.statusCode, proxyRes.headers);
-            proxyRes.pipe(res, { end: true });
-        });
-
-        proxyReq.on('error', (err) => {
-            console.error(`[Proxy Error] ${err.message}`);
-            res.writeHead(502, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Failed to connect to local Ollama instance.' }));
-        });
-
-        req.pipe(proxyReq, { end: true });
-        return;
-    }
-
-    // 2. Otherwise serve static files
+    // 1. Otherwise serve static files
     let requestPath = req.url.split('?')[0];
     if (requestPath === '/') {
         requestPath = '/index.html';
     }
 
-    const filePath = path.join(__dirname, '../ui', requestPath);
+    // Resolve and confine the path to the UI root to prevent path traversal
+    // (e.g. GET /../server/.env must not escape the ui/ directory).
+    const filePath = path.normalize(path.join(UI_ROOT, requestPath));
+    if (filePath !== UI_ROOT && !filePath.startsWith(UI_ROOT + path.sep)) {
+        res.writeHead(403, { 'Content-Type': 'text/plain' });
+        res.end('403 Forbidden');
+        return;
+    }
 
     fs.stat(filePath, (err, stats) => {
         if (err || !stats.isFile()) {
@@ -193,12 +171,14 @@ const server = http.createServer(async (req, res) => {
             return;
         }
 
-        res.writeHead(200, { 'Content-Type': getContentType(filePath) });
+        res.writeHead(200, {
+            'Content-Type': getContentType(filePath),
+            'Cache-Control': 'no-cache'
+        });
         fs.createReadStream(filePath).pipe(res);
     });
 });
 
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Game server running on http://0.0.0.0:${PORT}`);
-    console.log(`Proxying Ollama requests internally to ${OLLAMA_TARGET}`);
 });

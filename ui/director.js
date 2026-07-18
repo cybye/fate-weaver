@@ -145,7 +145,7 @@ function executeMutations(state, mutations, logGame, logDirector) {
         if (!mut || typeof mut !== 'object') return;
 
         switch (mut.type) {
-            case "spawn_actor":
+            case "spawn_actor": {
                 const actorDef = mut.actorDef;
                 if (actorDef && actorDef.id) {
                     const currentActorCount = Object.keys(state.actors).length;
@@ -173,8 +173,9 @@ function executeMutations(state, mutations, logGame, logDirector) {
                     }
                 }
                 break;
+            }
 
-            case "move_actor":
+            case "move_actor": {
                 const dest = mut.target;
                 if (dest && state.storyRooms[dest]) {
                     if (mut.actorId === "player") {
@@ -194,8 +195,9 @@ function executeMutations(state, mutations, logGame, logDirector) {
                     }
                 }
                 break;
+            }
 
-            case "transfer_item":
+            case "transfer_item": {
                 const item = mut.item;
                 let fromActor = state.actors[mut.from];
                 let toActor = state.actors[mut.to];
@@ -206,22 +208,33 @@ function executeMutations(state, mutations, logGame, logDirector) {
                     logDirector(`Mutation: Transferred ${item} from ${mut.from} to ${mut.to}`);
                 }
                 break;
+            }
 
-            case "block_path":
+            case "grant_item": {
+                if (mut.item && !state.playerInventory.includes(mut.item)) {
+                    state.playerInventory.push(mut.item);
+                    logDirector(`Mutation: Granted item ${mut.item} to player`);
+                }
+                break;
+            }
+
+            case "block_path": {
                 const conn = mut.connection;
                 if (conn && !state.blockedConnections.includes(conn)) {
                     state.blockedConnections.push(conn);
                     logDirector(`Mutation: Blocked path ${conn}`);
                 }
                 break;
+            }
 
-            case "unblock_path":
+            case "unblock_path": {
                 const unconn = mut.connection;
                 state.blockedConnections = state.blockedConnections.filter(c => c !== unconn);
                 logDirector(`Mutation: Unblocked path ${unconn}`);
                 break;
+            }
 
-            case "set_desires":
+            case "set_desires": {
                 const actor = state.actors[mut.actorId];
                 if (actor && mut.desires && typeof mut.desires === 'object') {
                     for (let desireKey in mut.desires) {
@@ -230,6 +243,7 @@ function executeMutations(state, mutations, logGame, logDirector) {
                     logDirector(`Mutation: Set desires of ${actor.name} to ${JSON.stringify(mut.desires)}`);
                 }
                 break;
+            }
 
             default:
                 console.warn(`Unknown mutation type: ${mut.type}`);
@@ -238,18 +252,16 @@ function executeMutations(state, mutations, logGame, logDirector) {
 }
 
 async function runDirectorLLM(state, playerAction, logGame, logDirector, targetMode) {
-    let actorStatusList = Object.values(state.actors).map(a => 
-        `- ${a.name} (Role: ${a.role}) is at ${a.location}. Inventory: ${JSON.stringify(a.inventory)}.`
-    ).join('\n');
-
     const activeMilestone = state.storyDag.nodes[state.activeMilestoneId];
 
     // --- Build dynamic prompt values from live state ---
-
-    // Actor roster: one line per NPC with name, role, and id
-    const actorRoster = Object.values(state.actors)
-        .map(a => `- ${a.name} (${a.role}, id: "${a.id}")`)
-        .join('\n');
+    // Single pass over actors builds both the status list and the roster line.
+    const actorLines = Object.values(state.actors).map(a => ({
+        status: `- ${a.name} (Role: ${a.role}) is at ${a.location}. Inventory: ${JSON.stringify(a.inventory)}.`,
+        roster: `- ${a.name} (${a.role}, id: "${a.id}")`
+    }));
+    const actorStatusList = actorLines.map(l => l.status).join('\n');
+    const actorRoster = actorLines.map(l => l.roster).join('\n');
 
     // Valid actorId options for mutations (NPC IDs only; "player" is added verbatim in the template)
     const actorIds = Object.keys(state.actors)

@@ -29,13 +29,39 @@ function loadEnv() {
 // Load environment variables immediately on load
 loadEnv();
 
+// Supported providers. Unknown provider strings fail fast instead of silently
+// routing to Ollama (which produced confusing runtime errors on config typos).
+const SUPPORTED_PROVIDERS = new Set(['openrouter', 'ollama']);
+
+// Cache the config and invalidate it when the file's mtime changes, so we avoid
+// a synchronous disk read on every LLM call while still picking up edits live.
+let _configCache = null;
+let _configMtime = null;
+
 function getLLMConfig() {
     const configPath = path.join(__dirname, 'llm_config.json');
     if (fs.existsSync(configPath)) {
         try {
+            const mtime = fs.statSync(configPath).mtimeMs;
+            if (_configCache && _configMtime === mtime) {
+                return _configCache;
+            }
             const configContent = fs.readFileSync(configPath, 'utf8');
-            return JSON.parse(configContent);
+            const config = JSON.parse(configContent);
+            const provider = (config.provider || 'ollama').toLowerCase();
+            if (!SUPPORTED_PROVIDERS.has(provider)) {
+                throw new Error(
+                    `Unsupported LLM provider "${config.provider}" in llm_config.json. ` +
+                    `Supported providers: ${[...SUPPORTED_PROVIDERS].join(', ')}.`
+                );
+            }
+            _configCache = config;
+            _configMtime = mtime;
+            return config;
         } catch (e) {
+            if (e.message && e.message.startsWith('Unsupported LLM provider')) {
+                throw e;
+            }
             console.error('[llmService] Failed to parse llm_config.json. Falling back to default.', e);
         }
     }
@@ -49,113 +75,103 @@ function getLLMConfig() {
     };
 }
 
-function getStructuredOutputSchema(role) {
-    switch ((role || 'default').toLowerCase()) {
-        case 'writer':
-            return {
-                name: 'WriterOutput',
-                schema: {
+// Structured-output schemas keyed by role. Adding a new LLM role is now a single
+// map entry instead of a new switch case, and the shape is declared once.
+const STRUCTURED_OUTPUT_SCHEMAS = {
+    writer: {
+        name: 'WriterOutput',
+        schema: {
+            type: 'object',
+            properties: {
+                paragraph: { type: 'string' }
+            },
+            required: ['paragraph'],
+            additionalProperties: true
+        }
+    },
+    director: {
+        name: 'DirectorOutput',
+        schema: {
+            type: 'object',
+            properties: {
+                description: { type: 'string' },
+                new_assertions: {
+                    type: 'array',
+                    items: { type: 'string' }
+                }
+            },
+            required: ['description', 'new_assertions'],
+            additionalProperties: true
+        }
+    },
+    parser: {
+        name: 'ToolCallOutput',
+        schema: {
+            type: 'object',
+            properties: {
+                tool_name: { type: 'string' },
+                arguments: {
                     type: 'object',
-                    properties: {
-                        paragraph: { type: 'string' }
-                    },
-                    required: ['paragraph'],
                     additionalProperties: true
                 }
-            };
-
-        case 'director':
-            return {
-                name: 'DirectorOutput',
-                schema: {
+            },
+            required: ['tool_name', 'arguments'],
+            additionalProperties: true
+        }
+    },
+    autoplayer: {
+        name: 'AutoplayerOutput',
+        schema: {
+            type: 'object',
+            properties: {
+                tool_name: { type: 'string' },
+                arguments: {
                     type: 'object',
-                    properties: {
-                        description: { type: 'string' },
-                        new_assertions: {
-                            type: 'array',
-                            items: { type: 'string' }
-                        }
-                    },
-                    required: ['description', 'new_assertions'],
                     additionalProperties: true
-                }
-            };
-
-        case 'parser':
-            return {
-                name: 'ToolCallOutput',
-                schema: {
-                    type: 'object',
-                    properties: {
-                        tool_name: { type: 'string' },
-                        arguments: {
-                            type: 'object',
-                            additionalProperties: true
-                        }
-                    },
-                    required: ['tool_name', 'arguments'],
-                    additionalProperties: true
-                }
-            };
-
-        case 'autoplayer':
-            return {
-                name: 'AutoplayerOutput',
-                schema: {
-                    type: 'object',
-                    properties: {
-                        tool_name: { type: 'string' },
-                        arguments: {
-                            type: 'object',
-                            additionalProperties: true
-                        },
-                        thought: { type: 'string' }
-                    },
-                    required: ['tool_name', 'arguments', 'thought'],
-                    additionalProperties: true
-                }
-            };
-
-        case 'npc_dialogue':
-            return {
-                name: 'NpcDialogueOutput',
-                schema: {
-                    type: 'object',
-                    properties: {
-                        dialogue: { type: 'string' },
-                        new_assertions: {
-                            type: 'array',
-                            items: { type: 'string' }
-                        },
-                        story_shared: { type: 'boolean' }
-                    },
-                    required: ['dialogue', 'new_assertions', 'story_shared'],
-                    additionalProperties: true
-                }
-            };
-
-        case 'npc_action':
-            return {
-                name: 'NpcActionOutput',
-                schema: {
-                    type: 'object',
-                    properties: {
-                        thought: { type: 'string' },
-                        plan_steps: {
-                            type: 'array',
-                            items: { type: 'string' }
-                        },
-                        long_term_goal: { type: 'string' },
-                        steal_attempt: { type: 'string' }
-                    },
-                    required: ['thought', 'plan_steps', 'long_term_goal'],
-                    additionalProperties: true
-                }
-            };
-
-        default:
-            return null;
+                },
+                thought: { type: 'string' }
+            },
+            required: ['tool_name', 'arguments', 'thought'],
+            additionalProperties: true
+        }
+    },
+    npc_dialogue: {
+        name: 'NpcDialogueOutput',
+        schema: {
+            type: 'object',
+            properties: {
+                dialogue: { type: 'string' },
+                new_assertions: {
+                    type: 'array',
+                    items: { type: 'string' }
+                },
+                story_shared: { type: 'boolean' }
+            },
+            required: ['dialogue', 'new_assertions', 'story_shared'],
+            additionalProperties: true
+        }
+    },
+    npc_action: {
+        name: 'NpcActionOutput',
+        schema: {
+            type: 'object',
+            properties: {
+                thought: { type: 'string' },
+                plan_steps: {
+                    type: 'array',
+                    items: { type: 'string' }
+                },
+                long_term_goal: { type: 'string' },
+                steal_attempt: { type: 'string' }
+            },
+            required: ['thought', 'plan_steps', 'long_term_goal'],
+            additionalProperties: true
+        }
     }
+};
+
+function getStructuredOutputSchema(role) {
+    return STRUCTURED_OUTPUT_SCHEMAS[(role || 'default').toLowerCase()] || null;
 }
 
 function buildStructuredOutputConfig(role) {
@@ -180,6 +196,11 @@ function sleep(ms) {
 // Override via env vars if desired; sensible defaults otherwise.
 const OPENROUTER_MAX_RETRIES = parseInt(process.env.OPENROUTER_MAX_RETRIES, 10) || 4;
 const OPENROUTER_BASE_BACKOFF_MS = parseInt(process.env.OPENROUTER_BASE_BACKOFF_MS, 10) || 1500;
+
+// Shared instruction appended to every LLM call so the model returns raw JSON
+// (no markdown fences / conversational text). Defined once to avoid drift
+// between the OpenRouter and Ollama request builders.
+const JSON_INSTRUCTION = 'Respond ONLY with a valid JSON block matching the exact structure. No markdown formatting. No conversational text.';
 
 async function generate(prompt, systemInstruction = '', role = 'default') {
     const config = getLLMConfig();
@@ -206,7 +227,7 @@ async function generate(prompt, systemInstruction = '', role = 'default') {
             'X-Title': 'Fate Weaver'
         };
 
-        const systemMessage = systemInstruction ? `${systemInstruction}\n\nRespond ONLY with a valid JSON block matching the exact structure. No markdown formatting. No conversational text.` : 'Respond ONLY with a valid JSON block matching the exact structure. No markdown formatting. No conversational text.';
+        const systemMessage = systemInstruction ? `${systemInstruction}\n\n${JSON_INSTRUCTION}` : JSON_INSTRUCTION;
         
         const body = {
             model: model,
@@ -226,7 +247,8 @@ async function generate(prompt, systemInstruction = '', role = 'default') {
             response = await fetch(url, {
                 method: 'POST',
                 headers: headers,
-                body: JSON.stringify(body)
+                body: JSON.stringify(body),
+                signal: AbortSignal.timeout(90000)
             });
 
             if (response.ok) break;
@@ -258,8 +280,8 @@ async function generate(prompt, systemInstruction = '', role = 'default') {
         
         // Inject format expectation in prompt similar to original client
         const formattedPrompt = systemInstruction 
-            ? `${systemInstruction}\n\nRespond ONLY with a valid JSON block matching the exact structure. No markdown formatting. No conversational text.\n\nInput Context:\n${prompt}`
-            : `Respond ONLY with a valid JSON block matching the exact structure. No markdown formatting. No conversational text.\n\nInput Context:\n${prompt}`;
+            ? `${systemInstruction}\n\n${JSON_INSTRUCTION}\n\nInput Context:\n${prompt}`
+            : `${JSON_INSTRUCTION}\n\nInput Context:\n${prompt}`;
 
         const body = {
             model: model,
@@ -271,7 +293,8 @@ async function generate(prompt, systemInstruction = '', role = 'default') {
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(90000)
         });
 
         if (!response.ok) {

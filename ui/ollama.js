@@ -37,10 +37,6 @@ export async function callLLM(prompt, systemInstruction = "", role = "default") 
   }
 }
 
-export async function callOllama(prompt, systemInstruction = "", role = "default") {
-  return callLLM(prompt, systemInstruction, role);
-}
-
 export async function testLLMConnection() {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 2000);
@@ -52,8 +48,4 @@ export async function testLLMConnection() {
     clearTimeout(timeoutId);
     return false;
   }
-}
-
-export async function testOllamaConnection() {
-  return testLLMConnection();
 }
