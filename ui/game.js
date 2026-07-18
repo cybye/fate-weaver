@@ -6,7 +6,7 @@ import { updateActor, broadcastEvent, getFormattedMemories, runActorLLM, applyAc
 import { runDirector } from './director.js';
 import { runWriter, typewriteText, toggleNarrator, isNarratorActive, speakText } from './writer.js';
 import { runAutoPlayer, checkDecisionPoints } from './autoplayer.js';
-import { loadStory, STORY_REGISTRY, restoreStoryFunctions } from './storyManager.js';
+import { loadStory, STORY_REGISTRY, restoreStoryFunctions, getNextChapterId } from './storyManager.js';
 
 // --- WRITER LOG QUEUE ---
 let currentTurnLogs = [];
@@ -50,12 +50,12 @@ function createInitialState() {
         _autoConversationTarget: null,
         _autoConversationRounds: 0,
         _autoPlayTimeoutId: null,
-        activeStoryId: "castle",
+        activeStoryId: "void_prologue",
         storyRooms: {},
         storyConnections: [],
         storyDag: { nodes: {} }
     };
-    loadStory("castle", initialState);
+    loadStory("void_prologue", initialState);
     return initialState;
 }
 
@@ -102,25 +102,55 @@ function appendChronicleInline(paragraph) {
     if (!currentTurnGroup) return null;
     const output = document.getElementById("terminal-output");
 
-    // Retrieve index of chronicle paragraphs
-    const isFirstParagraph = !state.chronicleHistory || state.chronicleHistory.length <= 1;
+    // Index of the paragraph we are about to append into the chronicle.
+    // (The paragraph is already pushed onto chronicleHistory by the caller, so the
+    // index is length - 1.)
+    const paraIndex = state.chronicleHistory && state.chronicleHistory.length > 0
+        ? state.chronicleHistory.length - 1
+        : 0;
+    const isFirstParagraph = paraIndex === 0;
+    // A chapter break is a recorded chronicle index that OPENS a new chapter
+    // (gets a drop-cap). A separate set records indices AFTER which the ornamental
+    // divider should render, closing the previous chapter.
+    const isChapterBreak = !isFirstParagraph && Array.isArray(state.chapterBreaks) && state.chapterBreaks.includes(paraIndex);
+    const isChapterCloser = !isFirstParagraph && Array.isArray(state.chapterBreakClosers) && state.chapterBreakClosers.includes(paraIndex);
 
-    // Ornamental divider (only if not first)
-    if (!isFirstParagraph) {
+    // Prose paragraph — starts empty; typewriteText animates text into it.
+    // Chapter-opening paragraphs get a drop-cap for a book-like feel.
+    const p = document.createElement("p");
+    p.className = "chronicle-inline";
+    if (isFirstParagraph || isChapterBreak) {
+        p.classList.add("first-paragraph");
+    }
+    currentTurnGroup.appendChild(p);
+
+    // Ornamental divider between chapters. When a chapter break is pending (set just
+    // before the previous chapter's closing note), render it AFTER the closing note so
+    // it closes the previous chapter; otherwise render it before the new chapter's
+    // opening prose as a seamless continuation of the same chronicle.
+    if (state._pendingChapterBreak) {
+        state._pendingChapterBreak = false;
+        if (!state.chapterBreakClosers) state.chapterBreakClosers = [];
+        state.chapterBreakClosers.push(paraIndex);
+        const breakEl = document.createElement("div");
+        breakEl.className = "chronicle-chapter-break";
+        breakEl.setAttribute("aria-hidden", "true");
+        breakEl.innerHTML = "<span>&#10022;</span>";
+        currentTurnGroup.appendChild(breakEl);
+    } else if (isChapterCloser) {
+        const breakEl = document.createElement("div");
+        breakEl.className = "chronicle-chapter-break";
+        breakEl.setAttribute("aria-hidden", "true");
+        breakEl.innerHTML = "<span>&#10022;</span>";
+        currentTurnGroup.appendChild(breakEl);
+    } else if (!isFirstParagraph && !isChapterBreak) {
+        // Ordinary inter-turn divider (smaller ornament).
         const divider = document.createElement("div");
         divider.className = "chronicle-divider";
         divider.setAttribute("aria-hidden", "true");
         divider.innerHTML = "<span>&#10022;</span>";
         currentTurnGroup.appendChild(divider);
     }
-
-    // Prose paragraph — starts empty; typewriteText animates text into it
-    const p = document.createElement("p");
-    p.className = "chronicle-inline";
-    if (isFirstParagraph) {
-        p.classList.add("first-paragraph");
-    }
-    currentTurnGroup.appendChild(p);
 
     // Make the logs in this turn-group collapsible
     makeLogsCollapsible(currentTurnGroup);
@@ -546,8 +576,33 @@ async function runStoryConvergenceCheck(state) {
                 document.getElementById("target-state-badge").textContent = "Completed";
                 document.getElementById("target-state-badge").className = "stat-value success";
                 logGame("event", convergenceCheck.msg);
-                logGame("event", "<b>STORY COMPLETE:</b> You have successfully completed the chapter!");
-                logDirector("SUCCESS: Story DAG fully traversed.");
+
+                // Campaign bridge: if a successor chapter exists, carry identity + inventory forward.
+                const nextChapterId = getNextChapterId(state.activeStoryId);
+                if (nextChapterId) {
+                    logDirector(`SUCCESS: Chapter '${state.activeStoryId}' fully traversed. Advancing to '${nextChapterId}'.`);
+
+                    // Write the chapter's closing note into the chronicle (if provided),
+                    // so the book ends the chapter gracefully before the next begins.
+                    if (convergenceCheck.closingNote) {
+                        // Flag that a chapter break follows this closing note, so
+                        // appendChronicleInline renders the ornamental divider AFTER the note
+                        // (closing the previous chapter) instead of before the next chapter's
+                        // opening prose.
+                        state._pendingChapterBreak = true;
+                        currentTurnLogs = [{ type: "event", text: convergenceCheck.closingNote }];
+                        await finalizeAction();
+                    }
+
+                    await advanceToNextChapter(nextChapterId);
+
+                    // Auto-write the new chapter's opening prose so the chronicle
+                    // continues seamlessly without waiting for player input.
+                    await writeChapterOpening();
+                } else {
+                    logGame("event", "<b>STORY COMPLETE:</b> You have successfully completed the campaign!");
+                    logDirector("SUCCESS: Story DAG fully traversed. Campaign complete.");
+                }
             }
         } else if (convergenceCheck.status === "pending") {
             // Voice the pending actor speech warning the player about Sly
@@ -600,6 +655,95 @@ async function runStoryConvergenceCheck(state) {
             logDirector(`FAILED: Milestone time limit exceeded.`);
         }
     }
+}
+
+// --- CAMPAIGN TRANSITION ---
+/**
+ * Advances the campaign to the next chapter, carrying the player's identity and
+ * inventory forward so the story feels continuous. Resets turn counter and
+ * per-chapter actor state (each chapter defines its own cast).
+ * @param {string} nextChapterId - The id of the next chapter in CAMPAIGN_ORDER.
+ */
+async function advanceToNextChapter(nextChapterId) {
+    const carry = {
+        playerName: state.playerName,
+        playerInventory: [ ...(state.playerInventory || []) ],
+        chronicleHistory: [ ...(state.chronicleHistory || []) ]
+    };
+
+    // Reset transient per-chapter state before loading the next chapter.
+    state.storyState = "running";
+    state.turn = 1;
+    state.history = [];
+    state.decisionsLog = {};
+    state.activeConversationTarget = null;
+    state.bobToldStory = false;
+    state._playerTurnStallCount = 0;
+    state.pendingDecision = null;
+
+    loadStory(nextChapterId, state, carry);
+
+    // Reset UI surfaces for the new chapter — but KEEP the inline chronicle continuous.
+    // We do NOT clear terminal-output; the new chapter's prose appends to the same book.
+    document.getElementById("target-state-badge").textContent = "Running";
+    document.getElementById("target-state-badge").className = "stat-value warning";
+    // Start a fresh turn-group for the new chapter (the previous one is already sealed).
+    currentTurnGroup = null;
+    currentTurnLogs = [];
+
+    const storySelect = document.getElementById("story-select");
+    if (storySelect) storySelect.value = state.activeStoryId;
+
+    // Seamless chapter break: a single ornamental marker (no extra dialog), then the
+    // new chapter's opening prose continues in the SAME chronicle with a drop-cap.
+    // The break ornament itself is rendered by appendChronicleInline right after the
+    // previous chapter's closing note (see _pendingChapterBreak), so it closes the
+    // prior chapter rather than prefixing the new one.
+    logGame("system", `<b>✦ &nbsp; ${state.chapterTitle} &nbsp; ✦</b>`);
+
+    initMap();
+    updateUI();
+    updateAutoPlayButton();
+
+    state.isWriting = false;
+}
+
+/**
+ * Writes the opening chronicle paragraph for the chapter that was just loaded by
+ * advanceToNextChapter. Continues the SAME chronicle (does not clear it) and uses
+ * the chapter-break index recorded by advanceToNextChapter so the prose renders
+ * with the ornamental break + drop-cap. Resolves once the prose is typed.
+ */
+async function writeChapterOpening() {
+    state.isWriting = true;
+    updateUI();
+
+    currentTurnLogs = [];
+    // Force-log the opening room description as an event so it is captured into the
+    // chronicle prose for the writer.
+    logGame("event", state.storyRooms[state.playerLocation].desc);
+
+    try {
+        const paragraph = await runWriter(state, currentTurnLogs, state.isLLMActive);
+        if (state.chronicleHistory) {
+            state.chronicleHistory.push(paragraph);
+            // Record this paragraph's index as a chapter-opening so it gets a drop-cap.
+            if (!state.chapterBreaks) state.chapterBreaks = [];
+            state.chapterBreaks.push(state.chronicleHistory.length - 1);
+        }
+        const inlineEl = appendChronicleInline(paragraph);
+        const animTarget = inlineEl || document.getElementById("book-pages");
+        await Promise.all([
+            typewriteText(animTarget, paragraph),
+            speakText(paragraph)
+        ]);
+        collapseOldTurns();
+    } catch (err) {
+        console.error("Chapter opening writer error:", err);
+    }
+
+    state.isWriting = false;
+    updateUI();
 }
 
 // --- GAME TICK ENGINE ---
@@ -692,6 +836,11 @@ async function tickGame(playerInput) {
         toolCall = { tool_name: "travel", arguments: { destination: dest } };
     } else if (playerAction === "wait") {
         toolCall = { tool_name: "wait", arguments: {} };
+    } else if (state.storyConfig?.customIntents?.some(ci => new RegExp(ci.match, "i").test(playerAction))) {
+        // Story-defined free-text intents (e.g. prologue "catch the thought").
+        // Matched before the LLM parser so they work in both LLM and local modes.
+        const intent = state.storyConfig.customIntents.find(ci => new RegExp(ci.match, "i").test(playerAction));
+        toolCall = { tool_name: intent.tool, arguments: {} };
     } else {
         if (state.isLLMActive) {
             logGame("system", "<i>[Consulting local LLM parser...]</i>");
@@ -730,6 +879,10 @@ async function tickGame(playerInput) {
                 } else {
                     toolCall = { tool_name: "wait", arguments: {} };
                 }
+            } else if (input.includes("catch") || input.includes("grab") || input.includes("seize") || input.includes("take") || input.includes("reach")) {
+                // Story-specific catch intents are handled by the generic customIntents
+                // pre-check above; in local mode without a matching config, fall back to wait.
+                toolCall = { tool_name: "wait", arguments: {} };
             } else {
                 let target = null;
                 Object.keys(state.storyRooms).forEach(r => { if (input.includes(r)) target = r; });
@@ -1026,6 +1179,21 @@ Describe the specified target. Output EXACTLY this JSON: { "description": "Your 
             importance: 2,
             originActorId: "player"
         }, logGame);
+    }
+
+    // 1b. Story-defined custom action (e.g. prologue "catch the thought").
+    // The config's onCustomAction hook decides what happens; if it returns true
+    // the turn is considered fully handled and we run convergence + finalize.
+    if (toolCall.tool_name && state.storyConfig?.onCustomAction) {
+        const handled = state.storyConfig.onCustomAction(toolCall.tool_name, state, logGame);
+        if (handled) {
+            actualActionText = `performed ${toolCall.tool_name}`;
+            // Write this turn's chronicle first (using the catch turn's logs), then
+            // run convergence — which may advance the chapter and clear the terminal.
+            await finalizeAction();
+            await runStoryConvergenceCheck(state);
+            return;
+        }
     }
 
     // 2. Run Director (using resolved state)
@@ -1649,18 +1817,13 @@ window.onload = () => {
                     // Interleave chronicle paragraph if available for this turn index
                     if (state.chronicleHistory && state.chronicleHistory[idx]) {
                         const isFirstParagraph = idx === 0;
-                        if (!isFirstParagraph) {
-                            const divider = document.createElement("div");
-                            divider.className = "chronicle-divider";
-                            divider.setAttribute("aria-hidden", "true");
-                            divider.innerHTML = "<span>&#10022;</span>";
-                            group.appendChild(divider);
-                        }
+                        const isChapterBreak = !isFirstParagraph && Array.isArray(state.chapterBreaks) && state.chapterBreaks.includes(idx);
+                        const isChapterCloser = !isFirstParagraph && Array.isArray(state.chapterBreakClosers) && state.chapterBreakClosers.includes(idx);
 
                         const p = document.createElement("p");
                         p.className = "chronicle-inline";
                         let textVal = state.chronicleHistory[idx];
-                        if (isFirstParagraph) {
+                        if (isFirstParagraph || isChapterBreak) {
                             p.classList.add("first-paragraph");
                             const firstChar = textVal.charAt(0);
                             const restText = textVal.substring(1);
@@ -1677,6 +1840,22 @@ window.onload = () => {
                             p.textContent = textVal;
                         }
                         group.appendChild(p);
+
+                        // Chapter break ornament: render AFTER the closing note so it
+                        // closes the previous chapter (matches the live flow).
+                        if (isChapterCloser) {
+                            const breakEl = document.createElement("div");
+                            breakEl.className = "chronicle-chapter-break";
+                            breakEl.setAttribute("aria-hidden", "true");
+                            breakEl.innerHTML = "<span>&#10022;</span>";
+                            group.appendChild(breakEl);
+                        } else if (!isFirstParagraph && !isChapterBreak) {
+                            const divider = document.createElement("div");
+                            divider.className = "chronicle-divider";
+                            divider.setAttribute("aria-hidden", "true");
+                            divider.innerHTML = "<span>&#10022;</span>";
+                            group.appendChild(divider);
+                        }
                     }
 
                     makeLogsCollapsible(group);
@@ -1950,6 +2129,9 @@ function resolveDecision(decision, choice) {
                 }
             } else if (mut.type === 'set_state') {
                 state[mut.key] = mut.value;
+            } else if (mut.type === 'set_decisions_log') {
+                if (!state.decisionsLog) state.decisionsLog = {};
+                state.decisionsLog[mut.key] = mut.value;
             }
             // Other mutation types can be added here as needed
         });

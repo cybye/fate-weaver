@@ -6,6 +6,8 @@ export const STORY_CONFIG = {
     chapterTitle: "Chapter 1: The Secret Messenger",
     initialPlayerLocation: "tavern",
     initialPlayerInventory: [],
+    // Per-chapter writing style: tailors the Writer's prose for this chapter.
+    writerStyle: "Write in a grounded, immediate, plot-driven register. Keep dialogue crisp and focused — let characters speak plainly and to the point. Describe surroundings, atmosphere, and physical setting only OUTSIDE of dialogue, in their own clauses or sentences, so the reader is never pulled out of a conversation by scenery. Prioritize clarity of information and momentum.",
     
     rooms: {
         tavern: { name: "Tavern", x: 25, y: 35, desc: "A cozy, warm tavern filled with the scent of roasted barley and woodsmoke." },
@@ -44,33 +46,7 @@ export const STORY_CONFIG = {
                     targetRoom: "tavern",
                     keyActors: ["sly"]
                 },
-                decisionPoints: [
-                    {
-                        id: "sly_ask_name",
-                        condition: (state) =>
-                            state.playerLocation === "tavern" &&
-                            state.actors.sly?.location === "tavern" &&
-                            state.turn === 1,
-                        prompt: "A shadow in the corner shifts. Sly the Thief leans forward, his dark eyes sizing you up. \"I don't believe we've been introduced, stranger,\" he purrs. \"What is your name?\"",
-                        choices: [
-                            {
-                                label: "Tell him your name is Leo",
-                                mutations: [{ type: "set_state", key: "playerName", value: "Leo" }],
-                                consequence: "\"Leo it is,\" Sly murmurs with a smirk. \"I'll remember that name, friend.\""
-                            },
-                            {
-                                label: "Give a fake alias: Shadow",
-                                mutations: [{ type: "set_state", key: "playerName", value: "Shadow" }],
-                                consequence: "\"A fitting alias for a tavern corner,\" Sly chuckles, raised a wooden goblet."
-                            },
-                            {
-                                label: "Refuse to answer and remain silent",
-                                mutations: [{ type: "set_state", key: "playerName", value: "the nameless traveler" }],
-                                consequence: "\"A quiet one, then. Suit yourself,\" Sly shrugs, shifting back into the dark."
-                            }
-                        ]
-                    }
-                ],
+                decisionPoints: [],
                 updateObjectives: (state) => {
                     if (state.actors.bob) {
                         state.actors.bob.criticalObjective = "Travel to the Alchemist Shop (alchemist) to deliver your report.";

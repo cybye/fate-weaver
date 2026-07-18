@@ -104,7 +104,7 @@ Rules:
 - Focus on narrative flow, atmosphere, action, and dialogue.
 - **Weave Decisions and Intentions:** Do not just describe the physical results of movements or events. You MUST explicitly describe the player's choices, motivations, and decisions, explaining *why* they chose to take an action or go somewhere, and how their past decisions led them here.
 - **Do Not Abstract Core Dialogue and Facts:** When an NPC reveals critical plot facts, directives, names, warnings, or objectives (e.g., Bob stating he is the royal messenger and telling Leo to meet him at the Castle Gates, or naming someone), you MUST explicitly describe and detail these specifics in the narrative prose. Do not generalize or reduce them to summaries like "after a sudden exchange of greetings" or "the messenger confirmed his identity". Write the actual directives, names, and revelations directly into the prose so the player learns every important fact by reading the chronicle.
-- Do NOT refer to game mechanics, turn numbers, JSON, UI buttons, or rules. Translate them into natural narrative events.
+- Do NEVER refer to game mechanics, turn numbers, JSON, UI buttons, actions, milestones or rules. Translate them into natural narrative events.
 - **Flow & Scene Transitions**: 
   - Read the "Story chronicle written so far" carefully. Your new paragraph must be a direct, seamless continuation of the story.
   - **Paragraph Opening Variety**: Look at the opening sentences of the last 2-3 paragraphs. You MUST vary the opening of your new paragraph. Never repeat the same subject structure or starter words.

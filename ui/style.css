@@ -601,6 +601,27 @@ body {
     margin: 0 10px;
 }
 
+/* Larger ornamental break between chapters — seamless continuation of one chronicle */
+.chronicle-chapter-break {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin: 22px 0 14px;
+    color: rgba(180, 140, 80, 0.55);
+    font-size: 1.1rem;
+    letter-spacing: 0.4em;
+}
+
+.chronicle-chapter-break::before,
+.chronicle-chapter-break::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(180, 140, 80, 0.45), transparent);
+    margin: 0 12px;
+}
+
 /* The chronicle prose paragraph rendered inline — primary reading surface (main book style) */
 .chronicle-inline {
     font-family: 'Lora', 'Georgia', serif;

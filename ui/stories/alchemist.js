@@ -6,6 +6,8 @@ export const STORY_CONFIG = {
     chapterTitle: "Chapter 2: The Fire-Resistance Potion",
     initialPlayerLocation: "square",
     initialPlayerInventory: [],
+    // Per-chapter writing style: tailors the Writer's prose for this chapter.
+    writerStyle: "Write with a tactile, sensory, alchemical flavor. Emphasize smells, textures, and the small wonders of brewing — bubbling vials, sulfur and lavender, the hiss of reagents. Keep dialogue purposeful but let the workshop's strangeness color the prose.",
     
     rooms: {
         tavern: { name: "Tavern", x: 25, y: 35, desc: "A cozy, warm tavern filled with the scent of roasted barley and woodsmoke." },

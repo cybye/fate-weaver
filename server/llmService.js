@@ -171,6 +171,16 @@ function buildStructuredOutputConfig(role) {
     };
 }
 
+// Promise-based delay used by the retry loop.
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Retry configuration for transient provider errors (e.g. OpenRouter 429 rate limits).
+// Override via env vars if desired; sensible defaults otherwise.
+const OPENROUTER_MAX_RETRIES = parseInt(process.env.OPENROUTER_MAX_RETRIES, 10) || 4;
+const OPENROUTER_BASE_BACKOFF_MS = parseInt(process.env.OPENROUTER_BASE_BACKOFF_MS, 10) || 1500;
+
 async function generate(prompt, systemInstruction = '', role = 'default') {
     const config = getLLMConfig();
     const provider = (config.provider || 'ollama').toLowerCase();
@@ -208,15 +218,29 @@ async function generate(prompt, systemInstruction = '', role = 'default') {
             plugins: [{ id: 'response-healing' }]
         };
 
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(body)
-        });
+        // Retry loop: transient failures (429 rate-limit, 5xx) are retried with
+        // exponential backoff so the game keeps running through brief outages.
+        let response = null;
+        let lastErrText = '';
+        for (let attempt = 0; attempt <= OPENROUTER_MAX_RETRIES; attempt++) {
+            response = await fetch(url, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(body)
+            });
 
-        if (!response.ok) {
-            const errText = await response.text();
-            throw new Error(`OpenRouter returned status ${response.status}: ${errText}`);
+            if (response.ok) break;
+
+            lastErrText = await response.text();
+            const status = response.status;
+            const isRetryable = status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+            if (!isRetryable || attempt === OPENROUTER_MAX_RETRIES) {
+                throw new Error(`OpenRouter returned status ${status}: ${lastErrText}`);
+            }
+
+            const backoff = OPENROUTER_BASE_BACKOFF_MS * Math.pow(2, attempt);
+            console.warn(`[llmService] OpenRouter status ${status} (attempt ${attempt + 1}/${OPENROUTER_MAX_RETRIES + 1}). Retrying in ${backoff}ms...`);
+            await sleep(backoff);
         }
 
         const data = await response.json();

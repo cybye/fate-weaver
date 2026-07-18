@@ -203,7 +203,9 @@ export async function updateActor(actorId, state, logGame, logDirector, isLLMAct
                 importance: 4,
                 originActorId: actorDef.id
             }, logGame);
-            logGame("npc", `<i>[Plan Execution] ${actorDef.name} moves to the ${state.storyRooms[dest].name}. (Remaining steps: ${actorDef.activePlan.join(" -> ") || "None"})</i>`);
+            if (!actorDef.hideInternalLogs) {
+                logGame("npc", `<i>[Plan Execution] ${actorDef.name} moves to the ${state.storyRooms[dest].name}. (Remaining steps: ${actorDef.activePlan.join(" -> ") || "None"})</i>`);
+            }
             
             // Publish actor_entered event for Pub/Sub
             publishEvent(state, {
@@ -212,13 +214,17 @@ export async function updateActor(actorId, state, logGame, logDirector, isLLMAct
                 payload: { actorId: actorDef.id }
             }, logGame, logDirector);
         } else {
-            logGame("npc", `<i>[Plan Execution] ${actorDef.name} stays at the ${state.storyRooms[actorDef.location].name}.</i>`);
+            if (!actorDef.hideInternalLogs) {
+                logGame("npc", `<i>[Plan Execution] ${actorDef.name} stays at the ${state.storyRooms[actorDef.location].name}.</i>`);
+            }
         }
         return;
     } else {
         // Plan was invalid or empty, clear it
         if (actorDef.activePlan.length > 0) {
-            logGame("npc", `<i>[Plan Aborted] ${actorDef.name}'s plan was aborted because the environment changed. Re-planning...</i>`);
+            if (!actorDef.hideInternalLogs) {
+                logGame("npc", `<i>[Plan Aborted] ${actorDef.name}'s plan was aborted because the environment changed. Re-planning...</i>`);
+            }
             actorDef.activePlan = [];
             actorDef.longTermGoal = null;
         }
@@ -415,7 +421,7 @@ export function applyActorLLMResult(actorId, state, logGame, logDirector, payloa
 
     const res = payload.res;
 
-    if (res.thought) {
+    if (res.thought && !actor.hideInternalLogs) {
         logGame("npc", `<i>${actor.name}'s Thought: "${res.thought}"</i>`);
     }
 
@@ -576,7 +582,9 @@ export function applyActorLLMResult(actorId, state, logGame, logDirector, payloa
     actor.activePlan = finalPlan;
     actor.longTermGoal = res.long_term_goal || "wander";
 
-    logGame("npc", `<i>[Plan Formulation] ${actor.name} established long-term goal: "${actor.longTermGoal}" with plan: ${actor.activePlan.join(" -> ") || "None"}</i>`);
+    if (!actor.hideInternalLogs) {
+        logGame("npc", `<i>[Plan Formulation] ${actor.name} established long-term goal: "${actor.longTermGoal}" with plan: ${actor.activePlan.join(" -> ") || "None"}</i>`);
+    }
 
     // Execute first step of newly formulated plan immediately
     if (actor.activePlan.length > 0) {
@@ -601,7 +609,9 @@ export function applyActorLLMResult(actorId, state, logGame, logDirector, payloa
                     importance: 4,
                     originActorId: actor.id
                 }, logGame);
-                logGame("npc", `<i>[Plan Execution] ${actor.name} moves to the ${state.storyRooms[dest].name}. (Remaining steps: ${actor.activePlan.join(" -> ") || "None"})</i>`);
+                if (!actor.hideInternalLogs) {
+                    logGame("npc", `<i>[Plan Execution] ${actor.name} moves to the ${state.storyRooms[dest].name}. (Remaining steps: ${actor.activePlan.join(" -> ") || "None"})</i>`);
+                }
 
                 // Publish actor_entered event for Pub/Sub
                 publishEvent(state, {
@@ -610,12 +620,18 @@ export function applyActorLLMResult(actorId, state, logGame, logDirector, payloa
                     payload: { actorId: actor.id }
                 }, logGame, logDirector);
             } else {
-                logGame("npc", `${actor.name} wanted to go to ${dest} but got lost and stayed.`);
+                if (!actor.hideInternalLogs) {
+                    logGame("npc", `${actor.name} wanted to go to ${dest} but got lost and stayed.`);
+                }
             }
         } else {
-            logGame("npc", `<i>[Plan Execution] ${actor.name} stays at the ${state.storyRooms[actor.location].name}.</i>`);
+            if (!actor.hideInternalLogs) {
+                logGame("npc", `<i>[Plan Execution] ${actor.name} stays at the ${state.storyRooms[actor.location].name}.</i>`);
+            }
         }
     } else {
-        logGame("npc", `${actor.name} resides at the ${state.storyRooms[actor.location].name}.`);
+        if (!actor.hideInternalLogs) {
+            logGame("npc", `${actor.name} resides at the ${state.storyRooms[actor.location].name}.`);
+        }
     }
 }

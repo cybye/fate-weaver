@@ -46,7 +46,22 @@ export async function runWriter(state, turnLogs, isLLMActive) {
         return `- ${actor.name}: ${actor.role} (located at the ${state.storyRooms[actor.location]?.name || actor.location})`;
     }).join('\n');
 
-    const historyWindow = (state.chronicleHistory || []).slice(-3);
+    // Continuity reference for the writer. By default we only show paragraphs from
+    // the CURRENT chapter so the prose starts a fresh scene each chapter instead of
+    // "transitioning" out of the previous one's atmosphere. The boundary is the last
+    // recorded chapter-break CLOSER (the previous chapter's closing note index);
+    // everything after it belongs to the current chapter. Persistent lore (name,
+    // decisions, inventory, actors) still comes from state and is preserved across
+    // chapters. The first chapter (no closers) falls back to the last 3 paragraphs.
+    const fullHistory = state.chronicleHistory || [];
+    let historyWindow;
+    const closers = Array.isArray(state.chapterBreakClosers) ? state.chapterBreakClosers : [];
+    if (closers.length > 0) {
+        const startIdx = closers[closers.length - 1] + 1; // first paragraph of current chapter
+        historyWindow = fullHistory.slice(Math.max(startIdx, fullHistory.length - 3));
+    } else {
+        historyWindow = fullHistory.slice(-3);
+    }
     const historyContext = historyWindow.length > 0
         ? historyWindow.join('\n\n')
         : "(This is the beginning of the story.)";
@@ -73,7 +88,14 @@ ${logSummary}`;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
             console.log(`[Writer Layer] Attempting chronicle generation (Attempt ${attempt}/${maxAttempts})...`);
-            const result = await callLLM(prompt, WRITER_PROMPT_TEMPLATE, "writer");
+            // Per-chapter writing style: each STORY_CONFIG may define a `writerStyle`
+            // string that tailors the prose (e.g. dreamy for the void, terse for the
+            // castle). Appended to the base template so it overrides where relevant.
+            const chapterStyle = state.storyConfig && state.storyConfig.writerStyle;
+            const systemInstruction = chapterStyle
+                ? `${WRITER_PROMPT_TEMPLATE}\n\n-- CHAPTER-SPECIFIC STYLE --\n${chapterStyle}`
+                : WRITER_PROMPT_TEMPLATE;
+            const result = await callLLM(prompt, systemInstruction, "writer");
             if (result) {
                 if (result.paragraph) {
                     return cleanParagraphText(result.paragraph.trim(), state);
