@@ -10,7 +10,7 @@ The game is structured as a turn-based, multi-agent sandbox where non-player cha
 
 The system is decoupled into three core layers:
 1. **Simulation Layer (`game.js`, `actors.js`)**: Manages coordinates, inventories, pathfinding, and the main game tick loop.
-2. **Director Layer (`content.js`)**: Configures story milestones (a Directed Acyclic Graph), room connections, and global lore facts.
+2. **Director Layer (`storyManager.js`, `stories/*.js`)**: Configures story milestones (a Directed Acyclic Graph), room connections, and global lore facts.
 3. **Chronicler Layer (`writer.js`, `llm.js`)**: Compiles turn events and logs, translating them into cohesive, stylish paragraphs using the backend LLM API.
 
 ---
@@ -28,7 +28,7 @@ The system is decoupled into three core layers:
 ## Installation & Setup
 
 ### Prerequisites
-* [Node.js](https://nodejs.org/) (v16+)
+* [Node.js](https://nodejs.org/) (v18+ — the server uses the global `fetch` API)
 * A backend LLM service configured through `server/llm_config.json`
 
 ### 1. Model Setup
